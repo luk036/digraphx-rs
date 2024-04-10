@@ -2,6 +2,8 @@ use petgraph::graph::{EdgeReference, NodeIndex};
 use petgraph::prelude::*;
 use petgraph::visit::EdgeRef;
 use petgraph::visit::IntoNodeIdentifiers;
+use std::collections::HashMap;
+use std::ops::Add;
 
 // use petgraph::visit::IntoNeighborsDirected;
 
@@ -15,15 +17,15 @@ use petgraph::visit::IntoNodeIdentifiers;
 /// * `pred`: The `pred` property is a `HashMap` that maps a `NodeIndex` to a tuple containing the
 /// previous node index and an `EdgeReference`. This is used to keep track of the predecessor node and
 /// the edge that leads to that node during the process of finding negative cycles in a directed graph
-#[derive(Debug, Clone)]
-pub struct NegCycleFinder<'a, V, D> {
-    pub digraph: &'a DiGraph<V, D>,
-    pub pred: std::collections::HashMap<NodeIndex, (NodeIndex, EdgeReference<'a, D>)>,
+#[derive(Debug)]
+pub struct NegCycleFinder<'a, Value, Domain> {
+    pub digraph: &'a DiGraph<Value, Domain>,
+    pub pred: HashMap<NodeIndex, (NodeIndex, EdgeReference<'a, Domain>)>,
 }
 
-impl<'a, V, D> NegCycleFinder<'a, V, D>
+impl<'a, Value, Domain> NegCycleFinder<'a, Value, Domain>
 where
-    D: std::ops::Add<Output = D> + std::cmp::PartialOrd + Copy,
+    Domain: Add<Output = Domain> + PartialOrd + Copy,
 {
     /// The `new` function creates a new `NegCycleFinder` object with an empty predecessor map.
     ///
@@ -34,12 +36,12 @@ where
     ///
     /// Returns:
     ///
-    /// The `new` function is returning an instance of the `NegCycleFinder<V, D>` struct.
-    /// Creates a new [`NegCycleFinder<V, D>`].
-    pub fn new(digraph: &'a DiGraph<V, D>) -> Self {
-        Self {
+    /// The `new` function is returning an instance of the `NegCycleFinder<Value, Domain>` struct.
+    /// Creates a new [`NegCycleFinder<Value, Domain>`].
+    pub fn new(digraph: &'a DiGraph<Value, Domain>) -> Self {
+        NegCycleFinder {
             digraph,
-            pred: std::collections::HashMap::new(),
+            pred: HashMap::new(),
         }
     }
 
@@ -49,7 +51,7 @@ where
     ///
     /// The function `find_cycle` returns an `Option<NodeIndex>`.
     pub fn find_cycle(&self) -> Option<NodeIndex> {
-        let mut visited = std::collections::HashMap::new();
+        let mut visited = HashMap::new();
         for vtx in self.digraph.node_identifiers() {
             if visited.contains_key(&vtx) {
                 continue;
@@ -78,30 +80,24 @@ where
     ///
     /// Arguments:
     ///
-    /// * `dist`: `dist` is a mutable reference to a slice of type `D`. It represents the distances from
+    /// * `dist`: `dist` is a mutable reference to a slice of type `Domain`. It represents the distances from
     /// a source node to each node in a graph.
-    /// * `get_weight`: The `get_weight` parameter is a closure that takes an `EdgeReference<D>` as
-    /// input and returns a value of type `D`. This closure is used to calculate the weight of each edge
-    /// in the graph. The `EdgeReference<D>` represents a reference to an edge in the graph, and
+    /// * `get_weight`: The `get_weight` parameter is a closure that takes an `EdgeReference<Domain>` as
+    /// input and returns a value of type `Domain`. This closure is used to calculate the weight of each edge
+    /// in the graph. The `EdgeReference<Domain>` represents a reference to an edge in the graph, and
     ///
     /// Returns:
     ///
     /// a boolean value.
-    pub fn relax<F>(&mut self, dist: &mut [D], get_weight: F) -> bool
+    pub fn relax<Callable>(&mut self, dist: &mut [Domain], get_weight: Callable) -> bool
     where
-        F: Fn(EdgeReference<D>) -> D,
+        Callable: Fn(EdgeReference<Domain>) -> Domain,
     {
         let mut changed = false;
         for utx in self.digraph.node_identifiers() {
             for edge in self.digraph.edges(utx) {
                 let vtx = edge.target();
                 let weight = get_weight(edge);
-                // for utx in self.digraph.node_indices() {
-                //     for vtx in self
-                //         .digraph
-                //         .neighbors_directed(utx, petgraph::Direction::Outgoing)
-                //     {
-                // let weight = get_weight((utx, vtx));
                 let distance = dist[utx.index()] + weight;
                 if dist[vtx.index()] > distance {
                     dist[vtx.index()] = distance;
@@ -113,21 +109,46 @@ where
         changed
     }
 
+    /// The function `cycle_list` takes a node index as input and returns a vector of edge references
+    /// that form a cycle in a graph.
+    ///
+    /// Arguments:
+    ///
+    /// * `handle`: The `handle` parameter is of type `NodeIndex`. It represents the starting node index
+    /// from which the cycle traversal will begin.
+    ///
+    /// Returns:
+    ///
+    /// The function `cycle_list` returns a vector of `EdgeReference` objects.
+    fn cycle_list(&self, handle: NodeIndex) -> Vec<EdgeReference<'a, Domain>> {
+        let mut vtx = handle;
+        let mut cycle = Vec::new();
+        loop {
+            let (utx, edge) = self.pred[&vtx];
+            cycle.push(edge);
+            vtx = utx;
+            if vtx == handle {
+                break;
+            }
+        }
+        cycle
+    }
+
     /// The `howard` function implements Howard's algorithm for finding negative cycles in a directed
     /// graph.
     ///
     /// Arguments:
     ///
-    /// * `dist`: `dist` is a mutable reference to an array of type `D`. This array is used to store the
+    /// * `dist`: `dist` is a mutable reference to an array of type `Domain`. This array is used to store the
     /// distances from the source vertex to each vertex in the graph. The algorithm will update the
     /// distances during the execution.
-    /// * `get_weight`: `get_weight` is a closure that takes an `EdgeReference<D>` and returns the
+    /// * `get_weight`: `get_weight` is a closure that takes an `EdgeReference<Domain>` and returns the
     /// weight of that edge. The `howard` function uses this closure to get the weight of each edge in
     /// the graph.
     ///
     /// Returns:
     ///
-    /// The `howard` function returns an `Option<Vec<EdgeReference<'a, D>>>`.
+    /// The `howard` function returns an `Option<Vec<EdgeReference<'a, Domain>>>`.
     /// Howard's algorithm for finding negative cycles
     ///
     /// # Examples
@@ -148,9 +169,9 @@ where
     /// let result = ncf.howard(&mut dist, |e| { *e.weight()});
     /// assert!(result.is_some());
     /// ```
-    pub fn howard<F>(&mut self, dist: &mut [D], get_weight: F) -> Option<Vec<EdgeReference<'a, D>>>
+    pub fn howard<F>(&mut self, dist: &mut [Domain], get_weight: F) -> Option<Vec<EdgeReference<'a, Domain>>>
     where
-        F: Fn(EdgeReference<D>) -> D,
+        F: Fn(EdgeReference<Domain>) -> Domain,
     {
         self.pred.clear();
         while self.relax(dist, &get_weight) {
@@ -160,31 +181,6 @@ where
             }
         }
         None
-    }
-
-    /// The function `cycle_list` takes a node index as input and returns a vector of edge references
-    /// that form a cycle in a graph.
-    ///
-    /// Arguments:
-    ///
-    /// * `handle`: The `handle` parameter is of type `NodeIndex`. It represents the starting node index
-    /// from which the cycle traversal will begin.
-    ///
-    /// Returns:
-    ///
-    /// The function `cycle_list` returns a vector of `EdgeReference` objects.
-    fn cycle_list(&self, handle: NodeIndex) -> Vec<EdgeReference<'a, D>> {
-        let mut vtx = handle;
-        let mut cycle = Vec::new();
-        loop {
-            let (utx, edge) = self.pred[&vtx];
-            cycle.push(edge);
-            vtx = utx;
-            if vtx == handle {
-                break;
-            }
-        }
-        cycle
     }
 }
 
