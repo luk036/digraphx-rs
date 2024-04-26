@@ -5,26 +5,26 @@
 [![CI](https://github.com/luk036/digraphx-rs/workflows/CI/badge.svg)](https://github.com/luk036/digraphx-rs/actions)
 [![codecov](https://codecov.io/gh/luk036/digraphx-rs/branch/main/graph/badge.svg?token=bamdGjpTmm)](https://codecov.io/gh/luk036/digraphx-rs)
 
-## Installation
+## 🛠️ Installation
 
-### Cargo
+### 📦 Cargo
 
-* Install the rust toolchain in order to have cargo installed by following
+- Install the rust toolchain in order to have cargo installed by following
   [this](https://www.rust-lang.org/tools/install) guide.
-* run `cargo install digraphx-rs`
+- run `cargo install digraphx-rs`
 
-## License
+## 📜 License
 
 Licensed under either of
 
- * Apache License, Version 2.0
-   ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
- * MIT license
-   ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+- Apache License, Version 2.0
+  ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+- MIT license
+  ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
 
 at your option.
 
-## Contribution
+## 🤝 Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
