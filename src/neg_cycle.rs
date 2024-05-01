@@ -169,7 +169,11 @@ where
     /// let result = ncf.howard(&mut dist, |e| { *e.weight()});
     /// assert!(result.is_some());
     /// ```
-    pub fn howard<F>(&mut self, dist: &mut [Domain], get_weight: F) -> Option<Vec<EdgeReference<'a, Domain>>>
+    pub fn howard<F>(
+        &mut self,
+        dist: &mut [Domain],
+        get_weight: F,
+    ) -> Option<Vec<EdgeReference<'a, Domain>>>
     where
         F: Fn(EdgeReference<Domain>) -> Domain,
     {
