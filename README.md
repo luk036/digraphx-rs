@@ -1,4 +1,4 @@
-# digraphx-rs
+# 🔀 digraphx-rs
 
 [![Crates.io](https://img.shields.io/crates/v/digraphx-rs.svg)](https://crates.io/crates/digraphx-rs)
 [![Docs.rs](https://docs.rs/digraphx-rs/badge.svg)](https://docs.rs/digraphx-rs)
