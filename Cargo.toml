@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 serde_json = "1.0.109"
-num = { version = "0.4.2" }
+num = { version = "0.4.3" }
 num-traits = { version = "0.2.19" }
 
 [dependencies.petgraph]
