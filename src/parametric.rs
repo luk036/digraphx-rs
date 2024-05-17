@@ -122,7 +122,7 @@ where
             if r_min >= *ratio {
                 break;
             }
-            cycle = c_min.clone();
+            cycle.clone_from(&c_min);
             *ratio = r_min;
         }
         cycle
