@@ -12,11 +12,11 @@ use std::ops::Add;
 /// Properties:
 ///
 /// * `digraph`: The `digraph` property is a reference to a directed graph (`DiGraph`) that the
-/// `NegCycleFinder` is operating on. It is annotated with a lifetime `'a`, indicating that the
-/// reference is valid for a certain scope.
+///             `NegCycleFinder` is operating on. It is annotated with a lifetime `'a`, indicating that the
+///             reference is valid for a certain scope.
 /// * `pred`: The `pred` property is a `HashMap` that maps a `NodeIndex` to a tuple containing the
-/// previous node index and an `EdgeReference`. This is used to keep track of the predecessor node and
-/// the edge that leads to that node during the process of finding negative cycles in a directed graph
+///             previous node index and an `EdgeReference`. This is used to keep track of the predecessor node and
+///             the edge that leads to that node during the process of finding negative cycles in a directed graph
 #[derive(Debug)]
 pub struct NegCycleFinder<'a, Value, Domain> {
     pub digraph: &'a DiGraph<Value, Domain>,
@@ -31,8 +31,7 @@ where
     ///
     /// Arguments:
     ///
-    /// * `digraph`: A reference to a directed graph (`DiGraph`) that the `NegCycleFinder` will operate
-    /// on.
+    /// * `digraph`: A reference to a directed graph (`DiGraph`) that the `NegCycleFinder` will operate on.
     ///
     /// Returns:
     ///
@@ -81,10 +80,10 @@ where
     /// Arguments:
     ///
     /// * `dist`: `dist` is a mutable reference to a slice of type `Domain`. It represents the distances from
-    /// a source node to each node in a graph.
+    ///             a source node to each node in a graph.
     /// * `get_weight`: The `get_weight` parameter is a closure that takes an `EdgeReference<Domain>` as
-    /// input and returns a value of type `Domain`. This closure is used to calculate the weight of each edge
-    /// in the graph. The `EdgeReference<Domain>` represents a reference to an edge in the graph, and
+    ///             input and returns a value of type `Domain`. This closure is used to calculate the weight of each edge
+    ///             in the graph. The `EdgeReference<Domain>` represents a reference to an edge in the graph, and
     ///
     /// Returns:
     ///
@@ -115,7 +114,7 @@ where
     /// Arguments:
     ///
     /// * `handle`: The `handle` parameter is of type `NodeIndex`. It represents the starting node index
-    /// from which the cycle traversal will begin.
+    ///             from which the cycle traversal will begin.
     ///
     /// Returns:
     ///
@@ -140,11 +139,11 @@ where
     /// Arguments:
     ///
     /// * `dist`: `dist` is a mutable reference to an array of type `Domain`. This array is used to store the
-    /// distances from the source vertex to each vertex in the graph. The algorithm will update the
-    /// distances during the execution.
+    ///             distances from the source vertex to each vertex in the graph. The algorithm will update the
+    ///             distances during the execution.
     /// * `get_weight`: `get_weight` is a closure that takes an `EdgeReference<Domain>` and returns the
-    /// weight of that edge. The `howard` function uses this closure to get the weight of each edge in
-    /// the graph.
+    ///             weight of that edge. The `howard` function uses this closure to get the weight of each edge in
+    ///             the graph.
     ///
     /// Returns:
     ///

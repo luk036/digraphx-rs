@@ -36,11 +36,11 @@ where
 /// Properties:
 ///
 /// * `ncf`: NegCycleFinder is a struct that is used to find negative cycles in a graph. It takes three
-/// type parameters: 'a, V, and R. 'a represents the lifetime of the struct, V represents the type of
-/// the vertices in the graph, and R represents the type of the weights or
+///           type parameters: 'a, V, and R. 'a represents the lifetime of the struct, V represents the type of
+///           the vertices in the graph, and R represents the type of the weights or
 /// * `omega`: The `omega` property is of type `P`, which is a generic type parameter that implements
-/// the `ParametricAPI` trait. This trait is not defined in the code snippet you provided, so it is
-/// likely defined elsewhere in the codebase.
+///           the `ParametricAPI` trait. This trait is not defined in the code snippet you provided, so it is
+///           likely defined elsewhere in the codebase.
 #[derive(Debug)]
 pub struct MaxParametricSolver<'a, V, R, P>
 where
@@ -79,10 +79,10 @@ where
     /// Arguments:
     ///
     /// * `grph`: The `grph` parameter is a reference to a directed graph (`DiGraph`) with vertices of
-    /// type `V` and edges of type `R`.
+    ///           type `V` and edges of type `R`.
     /// * `omega`: The `omega` parameter is of type `P`. It represents some value or parameter that is
-    /// used in the implementation of the `new` function. The specific meaning or purpose of `omega`
-    /// would depend on the context and the code that uses this function.
+    ///           used in the implementation of the `new` function. The specific meaning or purpose of `omega`
+    ///           would depend on the context and the code that uses this function.
     ///
     /// Returns:
     ///
@@ -99,10 +99,10 @@ where
     /// Arguments:
     ///
     /// * `dist`: `dist` is a mutable reference to a slice of type `R`. It represents a distance matrix
-    /// or array, where `R` is the type of the elements in the matrix.
+    ///            or array, where `R` is the type of the elements in the matrix.
     /// * `ratio`: The `ratio` parameter is a mutable reference to a value of type `R`. It represents
-    /// the current ratio value that is being used in the algorithm. The algorithm will update this
-    /// value if it finds a smaller ratio during its execution.
+    ///            the current ratio value that is being used in the algorithm. The algorithm will update this
+    ///            value if it finds a smaller ratio during its execution.
     ///
     /// Returns:
     ///
