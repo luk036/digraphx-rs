@@ -164,38 +164,23 @@ where
             let w = *edge.weight();
             if distance[ix(i)] + w < distance[ix(j)] {
                 // Step 3: negative cycle found
-                let start = j;
-                let mut node = start;
-                let mut visited = g.visit_map();
-                // Go backward in the predecessor chain
-                loop {
-                    let ancestor = match predecessor[ix(node)] {
-                        Some(predecessor_node) => predecessor_node,
-                        None => node, // no predecessor, self cycle
-                    };
-                    // We have only 2 ways to find the cycle and break the loop:
-                    // 1. start is reached
-                    if ancestor == start {
-                        path.push(ancestor);
-                        break;
-                    }
-                    // 2. some node was reached twice
-                    else if visited.is_visited(&ancestor) {
-                        // Drop any node in path that is before the first ancestor
-                        let pos = path
-                            .iter()
-                            .position(|&p| p == ancestor)
-                            .expect("we should always have a position");
-                        path = path[pos..path.len()].to_vec();
-
-                        break;
-                    }
-
-                    // None of the above, some middle path node
-                    path.push(ancestor);
-                    visited.visit(ancestor);
-                    node = ancestor;
+                let mut node = j;
+                let mut path_set = g.visit_map();
+                while path_set.visit(node) {
+                    node = predecessor[ix(node)].unwrap();
                 }
+
+                let mut cycle_node = node;
+                loop {
+                    path.push(cycle_node);
+                    cycle_node = predecessor[ix(cycle_node)].unwrap();
+                    if cycle_node == node {
+                        path.push(cycle_node);
+                        break;
+                    }
+                }
+                path.reverse();
+                path.pop();
                 // We are done here
                 break 'outer;
             }
@@ -213,7 +198,7 @@ where
 
 // Perform Step 1 and Step 2 of the Bellman-Ford algorithm.
 #[inline(always)]
-fn bellman_ford_initialize_relax<G>(
+pub fn bellman_ford_initialize_relax<G>(
     g: G,
     source: G::NodeId,
 ) -> (Vec<G::EdgeWeight>, Vec<Option<G::NodeId>>)

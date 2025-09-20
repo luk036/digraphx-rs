@@ -1,6 +1,6 @@
 [package]
 name = "digraphx-rs"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "Network Optimization Algorithms in Rust"
 repository = "https://github.com/luk036/digraphx-rs"
@@ -13,5 +13,5 @@ num = { version = "0.4.3" }
 num-traits = { version = "0.2.19" }
 
 [dependencies.petgraph]
-version = "0.7.1"
+version = "0.8.2"
 features = ["serde-1"]
