@@ -82,6 +82,25 @@ pub struct Paths<NodeId, EdgeWeight> {
 /// ]);
 ///
 /// assert!(bellman_ford(&graph_with_neg_cycle, NodeIndex::new(0)).is_err());
+///
+/// // Graph with no edges
+/// let mut g_no_edges = Graph::<(), f32, Directed>::new();
+/// let n0 = g_no_edges.add_node(());
+/// let path_no_edges = bellman_ford(&g_no_edges, n0);
+/// assert!(path_no_edges.is_ok());
+/// assert_eq!(path_no_edges.unwrap().distances, vec![0.0]);
+///
+/// // Disconnected graph
+/// let mut g_disconnected = Graph::new();
+/// let dn0 = g_disconnected.add_node(());
+/// let dn1 = g_disconnected.add_node(());
+/// let dn2 = g_disconnected.add_node(());
+/// g_disconnected.add_edge(dn0, dn1, 1.0);
+/// let path_disconnected = bellman_ford(&g_disconnected, dn0);
+/// assert!(path_disconnected.is_ok());
+/// let unwrapped_path = path_disconnected.unwrap();
+/// assert_eq!(unwrapped_path.distances, vec![0.0, 1.0, f32::INFINITY]);
+/// assert_eq!(unwrapped_path.predecessors, vec![None, Some(dn0), None]);
 /// ```
 pub fn bellman_ford<G>(
     g: G,
@@ -145,6 +164,15 @@ where
 ///     path,
 ///     Some([NodeIndex::new(1), NodeIndex::new(3), NodeIndex::new(2)].to_vec())
 /// );
+///
+/// // Graph with no negative cycle
+/// let graph_no_neg_cycle = Graph::<(), f32, Directed>::from_edges(&[
+///         (0, 1, 1.),
+///         (1, 2, 1.),
+///         (2, 0, 1.),
+/// ]);
+/// let path_no_neg_cycle = find_negative_cycle(&graph_no_neg_cycle, NodeIndex::new(0));
+/// assert!(path_no_neg_cycle.is_none());
 /// ```
 pub fn find_negative_cycle<G>(g: G, source: G::NodeId) -> Option<Vec<G::NodeId>>
 where
@@ -231,4 +259,52 @@ where
         }
     }
     (distance, predecessor)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use petgraph::Graph;
+
+    #[test]
+    fn test_bellman_ford_simple() {
+        let mut g = Graph::new();
+        let a = g.add_node(());
+        let b = g.add_node(());
+        let c = g.add_node(());
+        g.extend_with_edges(&[(a, b, 1.0), (b, c, 1.0), (a, c, 3.0)]);
+        let path = bellman_ford(&g, a).unwrap();
+        assert_eq!(path.distances, vec![0.0, 1.0, 2.0]);
+        assert_eq!(path.predecessors, vec![None, Some(a), Some(b)]);
+    }
+
+    #[test]
+    fn test_bellman_ford_negative_cycle() {
+        let mut g = Graph::new();
+        let a = g.add_node(());
+        let b = g.add_node(());
+        g.extend_with_edges(&[(a, b, 1.0), (b, a, -2.0)]);
+        let path = bellman_ford(&g, a);
+        assert!(path.is_err());
+    }
+
+    #[test]
+    fn test_find_negative_cycle_simple() {
+        let mut g = Graph::new();
+        let a = g.add_node(());
+        let b = g.add_node(());
+        g.extend_with_edges(&[(a, b, 1.0), (b, a, -2.0)]);
+        let cycle = find_negative_cycle(&g, a).unwrap();
+        assert_eq!(cycle, vec![a, b]);
+    }
+
+    #[test]
+    fn test_find_negative_cycle_none() {
+        let mut g = Graph::new();
+        let a = g.add_node(());
+        let b = g.add_node(());
+        g.extend_with_edges(&[(a, b, 1.0), (b, a, 2.0)]);
+        let cycle = find_negative_cycle(&g, a);
+        assert!(cycle.is_none());
+    }
 }

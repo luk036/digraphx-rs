@@ -168,6 +168,29 @@ where
     /// let result = ncf.howard(&mut dist, |e| { *e.weight()});
     /// assert!(result.is_some());
     /// ```
+    ///
+    /// ```
+    /// use petgraph::prelude::*;
+    /// use digraphx_rs::neg_cycle::NegCycleFinder;
+    /// let digraph = DiGraph::<(), i32>::new();
+    /// let mut ncf = NegCycleFinder::new(&digraph);
+    /// let mut dist = [];
+    /// let result = ncf.howard(&mut dist, |e| { *e.weight()});
+    /// assert!(result.is_none());
+    /// ```
+    ///
+    /// ```
+    /// use petgraph::prelude::*;
+    /// use digraphx_rs::neg_cycle::NegCycleFinder;
+    /// let digraph = DiGraph::<(), i32>::from_edges([
+    ///     (0, 1, 1),
+    ///     (1, 0, 1),
+    /// ]);
+    /// let mut ncf = NegCycleFinder::new(&digraph);
+    /// let mut dist = [0, 0];
+    /// let result = ncf.howard(&mut dist, |e| { *e.weight()});
+    /// assert!(result.is_none());
+    /// ```
     pub fn howard<F>(
         &mut self,
         dist: &mut [Domain],
@@ -258,5 +281,48 @@ mod tests {
         ];
         let result = ncf.howard(&mut dist, |e| *e.weight());
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_no_edges() {
+        let digraph = DiGraph::<(), Ratio<i32>>::new();
+        let mut ncf = NegCycleFinder::new(&digraph);
+        let mut dist = [];
+        let result = ncf.howard(&mut dist, |e| *e.weight());
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_simple_neg_cycle() {
+        let digraph = DiGraph::<(), Ratio<i32>>::from_edges([
+            (0, 1, Ratio::new(1, 1)),
+            (1, 0, Ratio::new(-2, 1)),
+        ]);
+        let mut ncf = NegCycleFinder::new(&digraph);
+        let mut dist = [Ratio::new(0, 1), Ratio::new(0, 1)];
+        let result = ncf.howard(&mut dist, |e| *e.weight());
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_complex_neg_cycle() {
+        let digraph = DiGraph::<(), Ratio<i32>>::from_edges([
+            (0, 1, Ratio::new(1, 1)),
+            (1, 2, Ratio::new(1, 1)),
+            (2, 0, Ratio::new(1, 1)), // Positive cycle
+            (2, 3, Ratio::new(-5, 1)),
+            (3, 4, Ratio::new(1, 1)),
+            (4, 2, Ratio::new(1, 1)), // Negative cycle
+        ]);
+        let mut ncf = NegCycleFinder::new(&digraph);
+        let mut dist = [
+            Ratio::new(0, 1),
+            Ratio::new(0, 1),
+            Ratio::new(0, 1),
+            Ratio::new(0, 1),
+            Ratio::new(0, 1),
+        ];
+        let result = ncf.howard(&mut dist, |e| *e.weight());
+        assert!(result.is_some());
     }
 }
