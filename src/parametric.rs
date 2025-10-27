@@ -130,9 +130,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     use num::rational::Ratio;
-    use petgraph::prelude::*;
 
     #[derive(Debug)]
     struct MyRatio {}
@@ -174,11 +173,7 @@ mod tests {
         ]);
 
         let mut solver = MaxParametricSolver::new(&digraph, MyRatio {});
-        let mut dist = [
-            Ratio::new(0, 1),
-            Ratio::new(0, 1),
-            Ratio::new(0, 1),
-        ];
+        let mut dist = [Ratio::new(0, 1), Ratio::new(0, 1), Ratio::new(0, 1)];
         let mut ratio = Ratio::new(1_000_000, 1);
         solver.run(&mut dist, &mut ratio);
 
@@ -194,11 +189,7 @@ mod tests {
         ]);
 
         let mut solver = MaxParametricSolver::new(&digraph, MyRatio {});
-        let mut dist = [
-            Ratio::new(0, 1),
-            Ratio::new(0, 1),
-            Ratio::new(0, 1),
-        ];
+        let mut dist = [Ratio::new(0, 1), Ratio::new(0, 1), Ratio::new(0, 1)];
         let mut ratio = Ratio::new(1_000_000, 1);
         solver.run(&mut dist, &mut ratio);
 
