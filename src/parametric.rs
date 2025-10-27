@@ -108,23 +108,113 @@ where
     ///
     /// a vector of `EdgeReference<R>`.
     pub fn run(&mut self, dist: &mut [R], ratio: &mut R) -> Vec<EdgeReference<'a, R>> {
-        let mut r_min = *ratio;
-        let mut c_min = Vec::<EdgeReference<R>>::new();
         let mut cycle = Vec::<EdgeReference<R>>::new();
         loop {
+            for d in dist.iter_mut() {
+                *d = R::zero();
+            }
             if let Some(ci) = self.ncf.howard(dist, |e| self.omega.distance(ratio, &e)) {
                 let ri = self.omega.zero_cancel(&ci);
-                if r_min > ri {
-                    r_min = ri;
-                    c_min = ci;
+                if *ratio > ri {
+                    *ratio = ri;
+                    cycle = ci;
+                    continue;
                 }
             }
-            if r_min >= *ratio {
-                break;
-            }
-            cycle.clone_from(&c_min);
-            *ratio = r_min;
+            break;
         }
         cycle
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    use num::rational::Ratio;
+    use petgraph::prelude::*;
+
+    #[derive(Debug)]
+    struct MyRatio {}
+
+    impl<V, R> ParametricAPI<V, R> for MyRatio
+    where
+        R: Copy
+            + PartialOrd
+            + Add<Output = R>
+            + Sub<Output = R>
+            + Mul<Output = R>
+            + Div<Output = R>
+            + Neg<Output = R>
+            + Inv<Output = R>
+            + Zero
+            + One
+            + From<i32>,
+        V: Eq + Hash + Clone,
+    {
+        fn distance(&self, ratio: &R, edge: &EdgeReference<R>) -> R {
+            *edge.weight() - *ratio
+        }
+
+        fn zero_cancel(&self, cycle: &[EdgeReference<R>]) -> R {
+            let mut total_weight = R::zero();
+            for edge in cycle {
+                total_weight = total_weight + *edge.weight();
+            }
+            total_weight / R::from(cycle.len() as i32)
+        }
+    }
+
+    #[test]
+    fn test_parametric_solver_simple() {
+        let digraph = DiGraph::<(), Ratio<i32>>::from_edges([
+            (0, 1, Ratio::new(1, 1)),
+            (1, 2, Ratio::new(1, 1)),
+            (2, 0, Ratio::new(1, 1)),
+        ]);
+
+        let mut solver = MaxParametricSolver::new(&digraph, MyRatio {});
+        let mut dist = [
+            Ratio::new(0, 1),
+            Ratio::new(0, 1),
+            Ratio::new(0, 1),
+        ];
+        let mut ratio = Ratio::new(1_000_000, 1);
+        solver.run(&mut dist, &mut ratio);
+
+        assert_eq!(ratio, Ratio::new(1, 1));
+    }
+
+    #[test]
+    fn test_parametric_solver_negative_cycle() {
+        let digraph = DiGraph::<(), Ratio<i32>>::from_edges([
+            (0, 1, Ratio::new(1, 1)),
+            (1, 2, Ratio::new(-5, 1)),
+            (2, 0, Ratio::new(1, 1)),
+        ]);
+
+        let mut solver = MaxParametricSolver::new(&digraph, MyRatio {});
+        let mut dist = [
+            Ratio::new(0, 1),
+            Ratio::new(0, 1),
+            Ratio::new(0, 1),
+        ];
+        let mut ratio = Ratio::new(1_000_000, 1);
+        solver.run(&mut dist, &mut ratio);
+
+        assert_eq!(ratio, Ratio::new(-1, 1));
+    }
+
+    #[test]
+    fn test_parametric_solver_no_cycle() {
+        let digraph = DiGraph::<(), Ratio<i32>>::from_edges([(0, 1, Ratio::new(1, 1))]);
+
+        let mut solver = MaxParametricSolver::new(&digraph, MyRatio {});
+        let mut dist = [Ratio::new(0, 1), Ratio::new(0, 1)];
+        let mut ratio = Ratio::new(1_000_000, 1);
+        let cycle = solver.run(&mut dist, &mut ratio);
+
+        assert_eq!(ratio, Ratio::new(1_000_000, 1));
+        assert!(cycle.is_empty());
     }
 }
