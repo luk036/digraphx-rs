@@ -224,7 +224,28 @@ where
     }
 }
 
-// Perform Step 1 and Step 2 of the Bellman-Ford algorithm.
+/// Perform Step 1 and Step 2 of the Bellman-Ford algorithm.
+///
+/// This function initializes distances and predecessors, then performs
+/// the relaxation step of the Bellman-Ford algorithm.
+///
+/// # Example
+/// ```rust
+/// use petgraph::Graph;
+/// use digraphx_rs::bellman_ford_initialize_relax;
+/// use petgraph::prelude::*;
+///
+/// let mut g = Graph::new();
+/// let a = g.add_node(());
+/// let b = g.add_node(());
+/// let c = g.add_node(());
+/// g.extend_with_edges(&[(a, b, 1.0), (b, c, 1.0), (a, c, 3.0)]);
+/// let (distances, predecessors) = bellman_ford_initialize_relax(&g, a);
+/// assert_eq!(distances[0], 0.0); // distance to source is 0
+/// assert_eq!(distances[1], 1.0); // distance to b from a
+/// assert_eq!(predecessors[0], None); // source has no predecessor
+/// assert_eq!(predecessors[1], Some(a)); // predecessor of b is a
+/// ```
 #[inline(always)]
 pub fn bellman_ford_initialize_relax<G>(
     g: G,

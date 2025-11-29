@@ -37,6 +37,16 @@ where
     ///
     /// The `new` function is returning an instance of the `NegCycleFinder<Value, Domain>` struct.
     /// Creates a new [`NegCycleFinder<Value, Domain>`].
+    ///
+    /// # Example
+    /// ```rust
+    /// use petgraph::prelude::*;
+    /// use digraphx_rs::neg_cycle::NegCycleFinder;
+    ///
+    /// let digraph = DiGraph::<(), i32>::new();
+    /// let ncf = NegCycleFinder::new(&digraph);
+    /// assert_eq!(ncf.pred.len(), 0);
+    /// ```
     pub fn new(digraph: &'a DiGraph<Value, Domain>) -> Self {
         NegCycleFinder {
             digraph,
@@ -49,6 +59,33 @@ where
     /// Returns:
     ///
     /// The function `find_cycle` returns an `Option<NodeIndex>`.
+    ///
+    /// # Example
+    /// ```rust
+    /// use petgraph::prelude::*;
+    /// use digraphx_rs::neg_cycle::NegCycleFinder;
+    ///
+    /// let digraph = DiGraph::<(), i32>::from_edges([
+    ///     (0, 1, 1),
+    ///     (1, 2, 1),
+    ///     (2, 0, -3), // This creates a negative cycle
+    /// ]);
+    /// let mut ncf = NegCycleFinder::new(&digraph);
+    ///
+    /// // We need to populate the pred map to simulate a cycle
+    /// use std::collections::HashMap;
+    /// let node0 = NodeIndex::new(0);
+    /// let node1 = NodeIndex::new(1);
+    /// let node2 = NodeIndex::new(2);
+    ///
+    /// // Add edges to pred to simulate finding a cycle
+    /// ncf.pred.insert(node1, (node0, digraph.edge_references().nth(0).unwrap()));
+    /// ncf.pred.insert(node2, (node1, digraph.edge_references().nth(1).unwrap()));
+    /// ncf.pred.insert(node0, (node2, digraph.edge_references().nth(2).unwrap()));
+    ///
+    /// let cycle_start = ncf.find_cycle();
+    /// assert!(cycle_start.is_some());
+    /// ```
     pub fn find_cycle(&self) -> Option<NodeIndex> {
         let mut visited = HashMap::new();
         for vtx in self.digraph.node_identifiers() {
@@ -88,6 +125,23 @@ where
     /// Returns:
     ///
     /// a boolean value.
+    ///
+    /// # Example
+    /// ```rust
+    /// use petgraph::prelude::*;
+    /// use digraphx_rs::neg_cycle::NegCycleFinder;
+    ///
+    /// let digraph = DiGraph::<(), i32>::from_edges([
+    ///     (0, 1, 1),
+    ///     (1, 2, 2),
+    /// ]);
+    /// let mut ncf = NegCycleFinder::new(&digraph);
+    /// let mut dist = [0, i32::MAX, i32::MAX]; // Initialize distances
+    /// let changed = ncf.relax(&mut dist, |e| *e.weight());
+    /// assert!(changed); // Should have updated distances
+    /// assert_eq!(dist[1], 1); // Distance to node 1 should be 1
+    /// assert_eq!(dist[2], 3); // Distance to node 2 should be 3 (1+2)
+    /// ```
     pub fn relax<Callable>(&mut self, dist: &mut [Domain], get_weight: Callable) -> bool
     where
         Callable: Fn(EdgeReference<Domain>) -> Domain,
