@@ -1,7 +1,71 @@
+//! # digraphx-rs
+//!
+//! Network optimization algorithms in Rust.
+//!
+//! ## Features
+//!
+//! - **Bellman-Ford** - Shortest path algorithm with support for negative edge weights
+//! - **Negative Cycle Detection** - Find and report cycles with negative total weight
+//! - **Parametric Algorithms** - Maximum cycle ratio and related optimization problems
+//! - **Howard's Algorithm** - Efficient negative cycle detection for large graphs
+//!
+//! ## Quick Start
+//!
+//! ```rust
+//! use digraphx_rs::bellman_ford;
+//! use petgraph::Graph;
+//!
+//! let mut g = Graph::new();
+//! let a = g.add_node(());
+//! let b = g.add_node(());
+//! g.extend_with_edges([(a, b, 4.0)]);
+//!
+//! let paths = bellman_ford(&g, a).unwrap();
+//! println!("Distances: {:?}", paths.distances);
+//! ```
+//!
+//! ## Modules
+//!
+//! - [`neg_cycle`] - Negative cycle detection algorithms
+//! - [`parametric`] - Parametric optimization algorithms
+//!
+//! # digraphx-rs
+//!
+//! Network optimization algorithms in Rust.
+//!
+//! ## Features
+//!
+//! - **Bellman-Ford** - Shortest path algorithm with support for negative edge weights
+//! - **Negative Cycle Detection** - Find and report cycles with negative total weight
+//! - **Parametric Algorithms** - Maximum cycle ratio and related optimization problems
+//! - **Howard's Algorithm** - Efficient negative cycle detection for large graphs
+//!
+//! ## Quick Start
+//!
+//! ```rust
+//! use digraphx_rs::bellman_ford;
+//! use petgraph::Graph;
+//!
+//! let mut g = Graph::new();
+//! let a = g.add_node(());
+//! let b = g.add_node(());
+//! g.extend_with_edges([(a, b, 4.0)]);
+//!
+//! let paths = bellman_ford(&g, a).unwrap();
+//! println!("Distances: {:?}", paths.distances);
+//! ```
+//!
+//! ## Modules
+//!
+//! - [`neg_cycle`] - Negative cycle detection algorithms
+//! - [`parametric`] - Parametric optimization algorithms
+//!
 //! Bellman-Ford algorithms.
 
 pub mod neg_cycle;
 pub mod parametric;
+
+pub mod prelude;
 // pub mod min_cycle_ratio_ai;
 
 use petgraph::prelude::*;
@@ -26,6 +90,11 @@ pub struct Paths<NodeId, EdgeWeight> {
 /// On success, return one vec with path costs, and another one which points
 /// out the predecessor of a node along a shortest path. The vectors
 /// are indexed by the graph's node indices.
+///
+/// # Complexity
+///
+/// - **Time**: O(V * E) where V is the number of vertices and E is the number of edges
+/// - **Space**: O(V) for the distance and predecessor arrays
 ///
 /// [bf]: https://en.wikipedia.org/wiki/Bellman%E2%80%93Ford_algorithm
 ///
@@ -139,7 +208,12 @@ where
 ///
 /// If a negative cycle is found from source, return one vec with a path of `NodeId`s.
 ///
-/// The time complexity of this algorithm should be the same as the Bellman-Ford (O(|V|·|E|)).
+/// # Complexity
+///
+/// - **Time**: O(V * E) where V is number of vertices and E is number of edges
+/// - **Space**: O(V) for distance and predecessor arrays
+///
+/// The time complexity of this algorithm should be the same as the Bellman-Ford.
 ///
 /// [nc]: https://blogs.asarkar.com/assets/docs/algorithms-curated/Negative-Weight%20Cycle%20Algorithms%20-%20Huang.pdf
 /// [bf]: https://en.wikipedia.org/wiki/Bellman%E2%80%93Ford_algorithm
@@ -229,6 +303,11 @@ where
 /// This function initializes distances and predecessors, then performs
 /// the relaxation step of the Bellman-Ford algorithm.
 ///
+/// # Complexity
+///
+/// - **Time**: O(V * E) where V is number of vertices and E is number of edges
+/// - **Space**: O(V) for distance and predecessor arrays
+///
 /// # Example
 /// ```rust
 /// use petgraph::Graph;
@@ -293,7 +372,7 @@ mod tests {
         let a = g.add_node(());
         let b = g.add_node(());
         let c = g.add_node(());
-        g.extend_with_edges(&[(a, b, 1.0), (b, c, 1.0), (a, c, 3.0)]);
+        g.extend_with_edges([(a, b, 1.0), (b, c, 1.0), (a, c, 3.0)]);
         let path = bellman_ford(&g, a).unwrap();
         assert_eq!(path.distances, vec![0.0, 1.0, 2.0]);
         assert_eq!(path.predecessors, vec![None, Some(a), Some(b)]);
@@ -304,7 +383,7 @@ mod tests {
         let mut g = Graph::new();
         let a = g.add_node(());
         let b = g.add_node(());
-        g.extend_with_edges(&[(a, b, 1.0), (b, a, -2.0)]);
+        g.extend_with_edges([(a, b, 1.0), (b, a, -2.0)]);
         let path = bellman_ford(&g, a);
         assert!(path.is_err());
     }
@@ -314,7 +393,7 @@ mod tests {
         let mut g = Graph::new();
         let a = g.add_node(());
         let b = g.add_node(());
-        g.extend_with_edges(&[(a, b, 1.0), (b, a, -2.0)]);
+        g.extend_with_edges([(a, b, 1.0), (b, a, -2.0)]);
         let cycle = find_negative_cycle(&g, a).unwrap();
         assert_eq!(cycle, vec![a, b]);
     }
@@ -324,7 +403,7 @@ mod tests {
         let mut g = Graph::new();
         let a = g.add_node(());
         let b = g.add_node(());
-        g.extend_with_edges(&[(a, b, 1.0), (b, a, 2.0)]);
+        g.extend_with_edges([(a, b, 1.0), (b, a, 2.0)]);
         let cycle = find_negative_cycle(&g, a);
         assert!(cycle.is_none());
     }

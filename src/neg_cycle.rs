@@ -126,6 +126,11 @@ where
     ///
     /// a boolean value.
     ///
+    /// # Complexity
+    ///
+    /// - **Time**: O(E) where E is number of edges in the graph
+    /// - **Space**: O(1) - operates in-place on existing distance array
+    ///
     /// # Example
     /// ```rust
     /// use petgraph::prelude::*;

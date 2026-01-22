@@ -1,0 +1,27 @@
+# Pre-commit hooks for digraphx-rs
+# Install: pre-commit install
+# Uninstall: pre-commit uninstall
+
+repos:
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all -- --check
+        language: system
+        files: \.rs$
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --all-targets --all-features --workspace -- -D warnings
+        language: system
+        files: \.rs$
+        pass_filenames: false
+
+      - id: cargo-test
+        name: cargo test
+        entry: cargo test --all-features --workspace
+        language: system
+        files: \.rs$
+        pass_filenames: false

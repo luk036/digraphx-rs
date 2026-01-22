@@ -160,6 +160,11 @@ where
     ///
     /// a vector of `EdgeReference<R>`.
     ///
+    /// # Complexity
+    ///
+    /// - **Time**: O(k * (V + E)) where k is number of iterations until convergence, V is vertices, E is edges
+    /// - **Space**: O(V) for distance array and cycle storage
+    ///
     /// # Example
     /// ```rust
     /// use petgraph::prelude::*;
