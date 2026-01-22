@@ -3,7 +3,6 @@
 use digraphx_rs::parametric::{MaxParametricSolver, ParametricAPI};
 use num::rational::Ratio;
 use petgraph::graph::{DiGraph, EdgeReference};
-use std::ops::{Add, Div, Mul, Neg, Sub};
 
 #[derive(Debug)]
 struct MyRatio {}
@@ -19,7 +18,7 @@ where
     fn zero_cancel(&self, cycle: &[EdgeReference<Ratio<i32>>]) -> Ratio<i32> {
         let mut total_weight = Ratio::new(0, 1);
         for edge in cycle {
-            total_weight = total_weight + *edge.weight();
+            total_weight += *edge.weight();
         }
         total_weight / Ratio::from_integer(cycle.len() as i32)
     }

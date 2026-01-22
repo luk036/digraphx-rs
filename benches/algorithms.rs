@@ -9,7 +9,6 @@ use digraphx_rs::{
 use num::rational::Ratio;
 use petgraph::{
     graph::{DiGraph, EdgeReference},
-    prelude::*,
     Graph,
 };
 
@@ -49,9 +48,9 @@ fn bench_find_negative_cycle_small(c: &mut Criterion) {
     let mut g = Graph::new();
     let a = g.add_node(());
     let b = g.add_node(());
-    let c = g.add_node(());
+    let d = g.add_node(());
 
-    g.extend_with_edges([(a, b, 1.0), (b, c, 1.0), (c, a, -3.0)]);
+    g.extend_with_edges([(a, b, 1.0), (b, d, 1.0), (d, a, -3.0)]);
 
     c.bench_function("find_negative_cycle_small", |b| {
         b.iter(|| find_negative_cycle(black_box(&g), a))
@@ -60,13 +59,13 @@ fn bench_find_negative_cycle_small(c: &mut Criterion) {
 
 fn bench_neg_cycle_finder_howard(c: &mut Criterion) {
     let digraph = DiGraph::<(), Ratio<i32>>::from_edges(
-        (0..100)
-            .flat_map(|i| (0..100).map(move |j| (i, j, Ratio::new((i + j) % 10, 1))))
+        (0u32..100)
+            .flat_map(|i| (0u32..100).map(move |j| (i, j, Ratio::new((i + j) as i32 % 10, 1))))
             .take(500),
     );
 
-    let mut ncf = NegCycleFinder::new(&digraph);
-    let mut dist = vec![Ratio::new(0, 1); digraph.node_count()];
+    let _ncf = NegCycleFinder::new(&digraph);
+    let dist = vec![Ratio::new(0, 1); digraph.node_count()];
 
     c.bench_function("neg_cycle_finder_howard", |b| {
         b.iter(|| {
@@ -91,7 +90,7 @@ where
     fn zero_cancel(&self, cycle: &[EdgeReference<Ratio<i32>>]) -> Ratio<i32> {
         let mut total_weight = Ratio::new(0, 1);
         for edge in cycle {
-            total_weight = total_weight + *edge.weight();
+            total_weight += *edge.weight();
         }
         total_weight / Ratio::from_integer(cycle.len() as i32)
     }

@@ -8,7 +8,6 @@ use digraphx_rs::{
 use num::rational::Ratio;
 use petgraph::{
     graph::{DiGraph, EdgeReference},
-    prelude::*,
     Graph,
 };
 
@@ -106,7 +105,7 @@ fn test_parametric_solver_integration() {
         fn zero_cancel(&self, cycle: &[EdgeReference<Ratio<i32>>]) -> Ratio<i32> {
             let mut total_weight = Ratio::new(0, 1);
             for edge in cycle {
-                total_weight = total_weight + *edge.weight();
+                total_weight += *edge.weight();
             }
             total_weight / Ratio::from_integer(cycle.len() as i32)
         }
@@ -122,7 +121,7 @@ fn test_parametric_solver_integration() {
     let mut dist = [Ratio::new(0, 1), Ratio::new(0, 1), Ratio::new(0, 1)];
     let mut ratio = Ratio::new(1_000_000, 1);
 
-    let cycle = solver.run(&mut dist, &mut ratio);
+    let _cycle = solver.run(&mut dist, &mut ratio);
 
     assert_eq!(ratio, Ratio::new(1, 1));
 }
