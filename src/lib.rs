@@ -28,45 +28,15 @@
 //!
 //! - [`neg_cycle`] - Negative cycle detection algorithms
 //! - [`parametric`] - Parametric optimization algorithms
-//!
-//! # digraphx-rs
-//!
-//! Network optimization algorithms in Rust.
-//!
-//! ## Features
-//!
-//! - **Bellman-Ford** - Shortest path algorithm with support for negative edge weights
-//! - **Negative Cycle Detection** - Find and report cycles with negative total weight
-//! - **Parametric Algorithms** - Maximum cycle ratio and related optimization problems
-//! - **Howard's Algorithm** - Efficient negative cycle detection for large graphs
-//!
-//! ## Quick Start
-//!
-//! ```rust
-//! use digraphx_rs::bellman_ford;
-//! use petgraph::Graph;
-//!
-//! let mut g = Graph::new();
-//! let a = g.add_node(());
-//! let b = g.add_node(());
-//! g.extend_with_edges([(a, b, 4.0)]);
-//!
-//! let paths = bellman_ford(&g, a).unwrap();
-//! println!("Distances: {:?}", paths.distances);
-//! ```
-//!
-//! ## Modules
-//!
-//! - [`neg_cycle`] - Negative cycle detection algorithms
-//! - [`parametric`] - Parametric optimization algorithms
-//!
-//! Bellman-Ford algorithms.
+//! - [`logging`] - Logging utilities (available with `std` feature)
 
 pub mod neg_cycle;
 pub mod parametric;
 
+#[cfg(feature = "std")]
+pub mod logging;
+
 pub mod prelude;
-// pub mod min_cycle_ratio_ai;
 
 use petgraph::prelude::*;
 
@@ -81,7 +51,7 @@ pub struct Paths<NodeId, EdgeWeight> {
     pub predecessors: Vec<Option<NodeId>>,
 }
 
-/// \[Generic\] Compute shortest paths from node `source` to all other.
+/// [Generic] Compute shortest paths from node `source` to all other.
 ///
 /// Using the [Bellman–Ford algorithm][bf]; negative edge costs are
 /// permitted, but the graph must not have a cycle of negative weights
@@ -201,7 +171,7 @@ where
     })
 }
 
-/// \[Generic\] Find the path of a negative cycle reachable from node `source`.
+/// [Generic] Find the path of a negative cycle reachable from node `source`.
 ///
 /// Using the [find_negative_cycle][nc]; will search the Graph for negative cycles using
 /// [Bellman–Ford algorithm][bf]. If no negative cycle is found the function will return `None`.
