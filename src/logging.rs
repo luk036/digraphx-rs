@@ -20,7 +20,7 @@
 //! init_logger_with_filter("debug");
 //! log::debug!("Debug message");
 //! ```
-//! 
+//!
 //!
 //! ## Environment Variables
 //!
