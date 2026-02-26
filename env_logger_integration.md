@@ -126,6 +126,14 @@ fn test_is_logger_initialized() { ... }
 
 All tests pass:
 
+| Test Suite | Count |
+|------------|-------|
+| Unit tests | 16 passed |
+| Integration tests | 7 passed |
+| Doc tests | 16 passed |
+
+All tests pass:
+
 **With `--features std`:**
 - Unit tests: 16 passed
 - Integration tests: 7 passed

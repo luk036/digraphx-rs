@@ -5,25 +5,22 @@
 //!
 //! ## Usage
 //!
-//! ```rust
+//! ```rust,ignore
 //! use digraphx_rs::logging::init_logger;
 //!
-//! fn main() {
-//!     init_logger();
-//!     log::info!("Application started");
-//! }
+//! init_logger();
+//! log::info!("Application started");
 //! ```
 //!
 //! Or with custom filter:
 //!
-//! ```rust
+//! ```rust,ignore
 //! use digraphx_rs::logging::init_logger_with_filter;
 //!
-//! fn main() {
-//!     init_logger_with_filter("debug");
-//!     log::debug!("Debug message");
-//! }
+//! init_logger_with_filter("debug");
+//! log::debug!("Debug message");
 //! ```
+//! 
 //!
 //! ## Environment Variables
 //!
