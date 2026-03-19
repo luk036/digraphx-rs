@@ -99,6 +99,16 @@ impl FromStr for R {
 //     }
 // }
 
+/// Set default values for missing edge weights in the graph.
+///
+/// This function iterates through all edges in the graph and sets a default value
+/// for any edge that is missing a specific weight attribute.
+///
+/// # Arguments
+///
+/// * `grph`: A mutable reference to the directed graph (`DiGraph<V, D>`) where `V` is the vertex type and `D` is the weight data type.
+/// * `weight`: A string slice (`&str`) representing the key of the weight attribute to set.
+/// * `value`: The default value of type `D` to assign to edges that are missing the specified weight attribute.
 fn set_default<D: Copy + Debug + PartialOrd + Sub<Output=D> + Div<Output=D> + From<f64> + FloatMeasure>(
     grph: &mut DiGraph<V, D>, weight: &str, value: D
 ) {
@@ -153,6 +163,21 @@ struct MinCycleRatioSolver<'a, D: 'a + Copy + Debug + PartialOrd + Sub<Output=D>
 }
 
 impl<'a, D: 'a + Copy + Debug + PartialOrd + Sub<Output=D> + Div<Output=D> + From<f64> + FloatMeasure> MinCycleRatioSolver<'a, D> {
+    /// Run the minimum cycle ratio solver to find the cycle with the minimum ratio.
+    ///
+    /// This method executes the parametric algorithm to find the cycle in the graph
+    /// with the minimum ratio of total weight to cycle length.
+    ///
+    /// # Arguments
+    ///
+    /// * `dist`: A mutable reference to a `HashMap<V, R>` storing distance values for each vertex.
+    /// * `r0`: The initial ratio value of type `R` to start the search from.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing:
+    /// - `R`: The minimum ratio found
+    /// - `Vec<EdgeIndex<V>>`: A vector of edge indices representing the cycle with the minimum ratio
     fn run(&self, dist: &mut HashMap<V, R>, r0: R) -> (R, Vec<EdgeIndex<V>>) {
         let omega = CycleRatio { grph: self.grph };
         let mut solver = MaxParametricSolver::new(self.grph, omega);

@@ -28,7 +28,7 @@
 //!
 //! - [`neg_cycle`] - Negative cycle detection algorithms
 //! - [`parametric`] - Parametric optimization algorithms
-//! - [`logging`] - Logging utilities (available with `std` feature)
+//! - `logging` - Logging utilities (available with `std` feature)
 
 pub mod neg_cycle;
 pub mod parametric;
