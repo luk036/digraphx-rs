@@ -9,8 +9,10 @@ use petgraph::visit::{EdgeRef, IntoNodeReferences};
 
 use num::rational::Ratio;
 
+/// A cycle represented as a list of vertex pairs.
 type Cycle<'a, V> = Vec<(&'a V, &'a V)>;
 
+/// Negative cycle finder using petgraph DiGraph.
 struct NegCycleFinder<'a, V, D> {
     pred: HashMap<&'a V, &'a V>,
     digraph: &'a DiGraph<&'a V, D>,
@@ -21,6 +23,7 @@ where
     V: Eq + Hash,
     D: std::ops::Add<Output = D> + std::cmp::PartialOrd + std::ops::Sub<Output = D> + Copy,
 {
+    /// Create a new negative cycle finder.
     fn new(digraph: &'a DiGraph<&'a V, D>) -> Self {
         Self {
             pred: HashMap::new(),
@@ -28,6 +31,7 @@ where
         }
     }
 
+    /// Find a cycle in the predecessor graph.
     fn find_cycle(&mut self) -> Option<Cycle<'a, V>> {
         let mut visited = HashSet::new();
         for vtx in self
@@ -53,6 +57,7 @@ where
         None
     }
 
+    /// Build a cycle from start to end vertices.
     fn build_cycle(&self, start: &V, end: &V) -> Option<Cycle<'a, V>> {
         let mut cycle = vec![];
         let mut utx = end;
@@ -68,6 +73,7 @@ where
         Some(cycle)
     }
 
+    /// Relax all edges in the graph (bulk version).
     pub fn relax2(&mut self, dist: &mut HashMap<&'a V, D>) -> bool {
         let mut changed = false;
         for edge in self.digraph.edge_references() {
@@ -84,6 +90,7 @@ where
         changed
     }
 
+    /// Relax a single edge.
     fn relax(
         &mut self,
         dist: &mut HashMap<&'a V, D>,
@@ -102,6 +109,7 @@ where
         }
     }
 
+    /// Run Bellman-Ford algorithm to find shortest paths or negative cycles.
     fn bellman_ford(&mut self, start: &V) -> Option<HashMap<&'a V, D>> {
         let mut dist = HashMap::new();
         let mut changed = true;

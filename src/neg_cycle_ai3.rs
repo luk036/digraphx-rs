@@ -1,12 +1,14 @@
 use petgraph::graph::DiGraph;
 // use petgraph::visit::IntoNeighborsDirected;
 
+/// Negative cycle finder using simple f64 weights.
 struct NegCycleFinder<'a> {
     grph: &'a DiGraph<(), f64>,
     pred: std::collections::HashMap<petgraph::graph::NodeIndex, petgraph::graph::NodeIndex>,
 }
 
 impl<'a> NegCycleFinder<'a> {
+    /// Create a new negative cycle finder.
     fn new(grph: &'a DiGraph<(), f64>) -> Self {
         Self {
             grph,
@@ -14,6 +16,7 @@ impl<'a> NegCycleFinder<'a> {
         }
     }
 
+    /// Find a cycle using the predecessor map.
     fn find_cycle(&self) -> impl Iterator<Item = petgraph::graph::NodeIndex> + '_ {
         let mut visited = std::collections::HashMap::new();
         self.grph
@@ -35,6 +38,7 @@ impl<'a> NegCycleFinder<'a> {
             })
     }
 
+    /// Relax edges in the graph.
     fn relax<F>(&mut self, dist: &mut [f64], get_weight: F) -> bool
     where
         F: Fn((petgraph::graph::NodeIndex, petgraph::graph::NodeIndex)) -> f64,
@@ -57,6 +61,7 @@ impl<'a> NegCycleFinder<'a> {
         changed
     }
 
+    /// Find a negative cycle in the graph.
     fn find_neg_cycle<F>(
         &mut self,
         dist: &mut [f64],
@@ -76,6 +81,7 @@ impl<'a> NegCycleFinder<'a> {
         None
     }
 
+    /// Extract the cycle edges from a starting node.
     fn cycle_list(
         &self,
         handle: petgraph::graph::NodeIndex,

@@ -5,11 +5,15 @@ use std::ops::{Add, Sub, Mul, Div};
 use std::collections::VecDeque;
 use std::fmt::Debug;
 
+/// Trait for parametric cycle ratio calculations with HashMap-based graphs.
 pub trait ParametricAPI<V, R> {
+    /// Compute the parametric distance for an edge.
     fn distance(&self, ratio: R, edge: &(V, V)) -> R;
+    /// Find the ratio where the cycle cost equals zero.
     fn zero_cancel(&self, cycle: &Vec<(V, V)>) -> R;
 }
 
+/// Maximum parametric solver for finding minimum ratio cycles.
 pub struct MaxParametricSolver<V, R, P> {
     ncf: NegCycleFinder<V, R, P>,
     omega: P,
@@ -21,6 +25,7 @@ where
     R: PartialOrd + Default + Copy + Add<Output = R> + Sub<Output = R> + Mul<Output = R> + Div<Output = R> + Debug,
     P: ParametricAPI<V, R>,
 {
+    /// Create a new parametric solver.
     pub fn new(grph: &HashMap<V, HashMap<V, R>>, omega: P) -> Self {
         Self {
             ncf: NegCycleFinder::new(grph),
@@ -28,6 +33,7 @@ where
         }
     }
 
+    /// Run the solver to find the minimum ratio cycle.
     pub fn run(&mut self, dist: &mut HashMap<V, R>, ratio: R) -> (R, Vec<(V, V)>) {
         let mut r_min = ratio;
         let mut c_min = vec![];
@@ -52,6 +58,7 @@ where
     }
 }
 
+/// Negative cycle finder using HashMap-based graph representation.
 pub struct NegCycleFinder<V, R, P> {
     grph: HashMap<V, HashMap<V, R>>,
     omega: P,
@@ -63,6 +70,7 @@ where
     R: PartialOrd + Default + Copy + Add<Output = R> + Sub<Output = R> + Mul<Output = R> + Div<Output = R> + Debug,
     P: ParametricAPI<V, R>,
 {
+    /// Create a new negative cycle finder.
     pub fn new(grph: &HashMap<V, HashMap<V, R>>) -> Self {
         Self {
             grph: grph.clone(),
@@ -70,6 +78,7 @@ where
         }
     }
 
+    /// Find a negative cycle in the graph.
     pub fn find_neg_cycle<F>(&self, dist: &mut HashMap<V, R>, mut cost: F) -> Option<Vec<(V, V)>>
     where
         F: FnMut(&(V, V)) -> R,
@@ -119,6 +128,7 @@ where
         None
     }
 
+    /// Get or create an ID for a vertex.
     fn get_id(&self, id: &mut Vec<usize>, to: &mut Vec<Option<usize>>, v: V) -> usize {
         let n = self.grph.len();
         let i = id[v.hash() % n];

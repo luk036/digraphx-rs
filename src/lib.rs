@@ -45,9 +45,15 @@ use petgraph::visit::{
     IntoEdges, IntoNodeIdentifiers, NodeCount, NodeIndexable, VisitMap, Visitable,
 };
 
+/// Result of shortest path computation.
+///
+/// Contains distances from the source node to all other nodes,
+/// and predecessor information to reconstruct paths.
 #[derive(Debug, Clone)]
 pub struct Paths<NodeId, EdgeWeight> {
+    /// Distance from source to each node (indexed by node index)
     pub distances: Vec<EdgeWeight>,
+    /// Predecessor node for each node along the shortest path
     pub predecessors: Vec<Option<NodeId>>,
 }
 

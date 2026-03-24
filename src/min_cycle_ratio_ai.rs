@@ -1,24 +1,26 @@
-use crate::parametric::{ParametricAPI, MaxParametricSolver};
+use crate::parametric::{MaxParametricSolver, ParametricAPI};
 
-use std::collections::HashMap;
-use std::hash::Hash;
-use std::ops::{Div, Sub};
 use std::cmp::PartialOrd;
+use std::collections::HashMap;
 use std::convert::From;
 use std::fmt::Debug;
+use std::hash::Hash;
 use std::iter::Sum;
 use std::marker::Copy;
 use std::num::ParseFloatError;
+use std::ops::{Div, Sub};
 use std::str::FromStr;
 
+use petgraph::algo::FloatMeasure;
 use petgraph::graph::{DiGraph, EdgeReference};
 use petgraph::prelude::*;
 use petgraph::visit::EdgeRef;
-use petgraph::algo::FloatMeasure;
 
+/// Vertex type represented as a usize wrapper.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct V(usize);
 
+/// Ratio type represented as an f64 wrapper.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct R(f64);
 
@@ -109,32 +111,52 @@ impl FromStr for R {
 /// * `grph`: A mutable reference to the directed graph (`DiGraph<V, D>`) where `V` is the vertex type and `D` is the weight data type.
 /// * `weight`: A string slice (`&str`) representing the key of the weight attribute to set.
 /// * `value`: The default value of type `D` to assign to edges that are missing the specified weight attribute.
-fn set_default<D: Copy + Debug + PartialOrd + Sub<Output=D> + Div<Output=D> + From<f64> + FloatMeasure>(
-    grph: &mut DiGraph<V, D>, weight: &str, value: D
+fn set_default<
+    D: Copy + Debug + PartialOrd + Sub<Output = D> + Div<Output = D> + From<f64> + FloatMeasure,
+>(
+    grph: &mut DiGraph<V, D>,
+    weight: &str,
+    value: D,
 ) {
     for u in grph.node_indices() {
         for e in grph.edges(u) {
             if grph.edge_weight_mut(e).unwrap().get(weight).is_none() {
-                grph.edge_weight_mut(e).unwrap().insert(weight.to_string(), value);
+                grph.edge_weight_mut(e)
+                    .unwrap()
+                    .insert(weight.to_string(), value);
             }
         }
     }
 }
 
-struct CycleRatio<'a, D: 'a + Copy + Debug + PartialOrd + Sub<Output=D> + Div<Output=D> + From<f64>> {
+/// Cycle ratio parametric implementation.
+struct CycleRatio<
+    'a,
+    D: 'a + Copy + Debug + PartialOrd + Sub<Output = D> + Div<Output = D> + From<f64>,
+> {
     grph: &'a DiGraph<V, HashMap<String, D>>,
 }
 
-impl<'a, D: 'a + Copy + Debug + PartialOrd + Sub<Output=D> + Div<Output=D> + From<f64>> ParametricAPI<HashMap<String, D>, R> for CycleRatio<'a, R> {
+impl<'a, D: 'a + Copy + Debug + PartialOrd + Sub<Output = D> + Div<Output = D> + From<f64>>
+    ParametricAPI<HashMap<String, D>, R> for CycleRatio<'a, R>
+{
+    /// Compute the parametric distance (cost - ratio * time).
     fn distance(&self, ratio: &R, e: &EdgeReference<HashMap<String, D>>) -> R {
         let cost = *e.weight().get("cost").unwrap();
         let time = *e.weight().get("time").unwrap();
         cost - ratio * time
     }
 
+    /// Find the ratio where cycle cost equals zero.
     fn zero_cancel(&self, cycle: Vec<EdgeIndex<V>>) -> R {
-        let total_cost = cycle.iter().map(|e| *self.grph.edge_weight(*e).unwrap().get("cost").unwrap()).sum::<D>();
-        let total_time = cycle.iter().map(|e| *self.grph.edge_weight(*e).unwrap().get("time").unwrap()).sum::<D>();
+        let total_cost = cycle
+            .iter()
+            .map(|e| *self.grph.edge_weight(*e).unwrap().get("cost").unwrap())
+            .sum::<D>();
+        let total_time = cycle
+            .iter()
+            .map(|e| *self.grph.edge_weight(*e).unwrap().get("time").unwrap())
+            .sum::<D>();
         total_cost / total_time
     }
 }
@@ -158,11 +180,25 @@ impl<'a, D: 'a + Copy + Debug + PartialOrd + Sub<Output=D> + Div<Output=D> + Fro
  * @tparam DiGraph
  * @tparam Ratio
  */
-struct MinCycleRatioSolver<'a, D: 'a + Copy + Debug + PartialOrd + Sub<Output=D> + Div<Output=D> + From<f64> + FloatMeasure> {
+struct MinCycleRatioSolver<
+    'a,
+    D: 'a + Copy + Debug + PartialOrd + Sub<Output = D> + Div<Output = D> + From<f64> + FloatMeasure,
+> {
     grph: &'a DiGraph<V, HashMap<String, D>>,
 }
 
-impl<'a, D: 'a + Copy + Debug + PartialOrd + Sub<Output=D> + Div<Output=D> + From<f64> + FloatMeasure> MinCycleRatioSolver<'a, D> {
+impl<
+        'a,
+        D: 'a
+            + Copy
+            + Debug
+            + PartialOrd
+            + Sub<Output = D>
+            + Div<Output = D>
+            + From<f64>
+            + FloatMeasure,
+    > MinCycleRatioSolver<'a, D>
+{
     /// Run the minimum cycle ratio solver to find the cycle with the minimum ratio.
     ///
     /// This method executes the parametric algorithm to find the cycle in the graph
@@ -204,4 +240,3 @@ fn main() {
     let (ratio, cycle) = solver.run(&mut dist, R::from(0.0));
     // println!("{:?} {:?}", ratio, cycle);
 }
-
