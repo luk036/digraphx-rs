@@ -9,7 +9,7 @@
 Here's the Rust equivalent:
 
 ```rust
-use petgraph::prelude::{Direction, Edge, Graph, NodeIndex};
+use petgraph::prelude::{Direction, Arc, Graph, NodeIndex};
 use std::collections::VecDeque;
 
 struct TinyDiGraph {
@@ -34,7 +34,7 @@ impl TinyDiGraph {
     }
 
     fn add_edge(&mut self, src: NodeIndex, dst: NodeIndex) {
-        let edge = Edge::new(src, dst, 1);
+        let edge = Arc::new(src, dst, 1);
         self.graph.add_edge(edge);
     }
 

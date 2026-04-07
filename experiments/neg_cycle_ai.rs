@@ -1,23 +1,23 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
-struct NegCycleFinder<Node, Edge, Domain>
+struct NegCycleFinder<Node, Arc, Domain>
 where
     Node: Hash + Eq,
-    Edge: Hash + Eq,
+    Arc: Hash + Eq,
     Domain: PartialEq + PartialOrd + Clone,
 {
-    digraph: HashMap<Node, HashMap<Node, Edge>>,
-    pred: HashMap<Node, (Node, Edge)>,
+    digraph: HashMap<Node, HashMap<Node, Arc>>,
+    pred: HashMap<Node, (Node, Arc)>,
 }
 
-impl<Node, Edge, Domain> NegCycleFinder<Node, Edge, Domain>
+impl<Node, Arc, Domain> NegCycleFinder<Node, Arc, Domain>
 where
     Node: Hash + Eq + Clone,
-    Edge: Hash + Eq + Clone,
+    Arc: Hash + Eq + Clone,
     Domain: PartialEq + PartialOrd + Clone,
 {
-    fn new(digraph: HashMap<Node, HashMap<Node, Edge>>) -> NegCycleFinder<Node, Edge, Domain> {
+    fn new(digraph: HashMap<Node, HashMap<Node, Arc>>) -> NegCycleFinder<Node, Arc, Domain> {
         NegCycleFinder {
             digraph,
             pred: HashMap::new(),
@@ -53,7 +53,7 @@ where
     fn relax(
         &self,
         dist: &mut HashMap<Node, Domain>,
-        get_weight: &dyn Fn(Edge) -> Domain,
+        get_weight: &dyn Fn(Arc) -> Domain,
     ) -> bool {
         let mut changed = false;
 
@@ -74,9 +74,9 @@ where
     fn howard(
         &mut self,
         dist: &mut HashMap<Node, Domain>,
-        get_weight: &dyn Fn(Edge) -> Domain,
-    ) -> Vec<Vec<Edge>> {
-        let mut result: Vec<Vec<Edge>> = vec![];
+        get_weight: &dyn Fn(Arc) -> Domain,
+    ) -> Vec<Vec<Arc>> {
+        let mut result: Vec<Vec<Arc>> = vec![];
         let mut found = false;
 
         while !found && self.relax(dist, get_weight) {
@@ -90,9 +90,9 @@ where
         result
     }
 
-    fn cycle_list(&self, handle: Node) -> Vec<Edge> {
+    fn cycle_list(&self, handle: Node) -> Vec<Arc> {
         let mut vtx = handle;
-        let mut cycle: Vec<Edge> = vec![];
+        let mut cycle: Vec<Arc> = vec![];
 
         loop {
             let (utx, edge) = self.pred[&vtx].clone();
@@ -110,7 +110,7 @@ where
         &self,
         handle: &Node,
         dist: &HashMap<Node, Domain>,
-        get_weight: &dyn Fn(Edge) -> Domain,
+        get_weight: &dyn Fn(Arc) -> Domain,
     ) -> bool {
         let mut vtx = handle.clone();
 

@@ -52,7 +52,7 @@ g.extend_with_edges([(a, b, 4.0)]);
 
 Simple adjacency list representation using nested HashMaps.
 
-### `HashMap<Node, HashMap<Node, Edge>>`
+### `HashMap<Node, HashMap<Node, Arc>>`
 
 **Used in:**
 - `src/parametric_ai2.rs` - Alternative implementation

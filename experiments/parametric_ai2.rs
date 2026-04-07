@@ -2,17 +2,17 @@ use std::collections::HashMap;
 use std::cmp::PartialOrd;
 use std::hash::Hash;
 
-trait ParametricAPI<Node, Edge, Ratio> {
-    fn distance(&self, ratio: Ratio, edge: &Edge) -> Ratio;
+trait ParametricAPI<Node, Arc, Ratio> {
+    fn distance(&self, ratio: Ratio, edge: &Arc) -> Ratio;
     fn zero_cancel(&self, cycle: &Cycle) -> Ratio;
 }
 
-struct MaxParametricSolver<Node, Edge, Ratio, D, Cycle> {
+struct MaxParametricSolver<Node, Arc, Ratio, D, Cycle> {
     ncf: NegCycleFinder,
-    omega: ParametricAPI<Node, Edge, Ratio>,
+    omega: ParametricAPI<Node, Arc, Ratio>,
 }
 
-impl<Node, Edge, Ratio, D, Cycle> MaxParametricSolver<Node, Edge, Ratio, D, Cycle> {
+impl<Node, Arc, Ratio, D, Cycle> MaxParametricSolver<Node, Arc, Ratio, D, Cycle> {
     fn run(&self, dist: &mut HashMap<Node, D>, ratio: Ratio) -> (Ratio, Cycle) {
         // Implementation here
     }
@@ -22,12 +22,12 @@ fn set_default(digraph: &mut GraphMut, weight: &str, value: Domain) {
     // Implementation here
 }
 
-struct CycleRatioAPI<Node, Edge, Ratio, D> {
+struct CycleRatioAPI<Node, Arc, Ratio, D> {
     digraph: HashMap<Node, HashMap<Node, HashMap<String, D>>>,
     result_type: D,
 }
 
-impl<Node, Edge, Ratio, D> CycleRatioAPI<Node, Edge, Ratio, D> {
+impl<Node, Arc, Ratio, D> CycleRatioAPI<Node, Arc, Ratio, D> {
     fn distance(&self, ratio: Ratio, edge: &mut HashMap<String, D>) -> Ratio {
         // Implementation here
     }
@@ -37,11 +37,11 @@ impl<Node, Edge, Ratio, D> CycleRatioAPI<Node, Edge, Ratio, D> {
     }
 }
 
-struct MinCycleRatioSolver<Node, Edge, Ratio> {
+struct MinCycleRatioSolver<Node, Arc, Ratio> {
     digraph: Graph,
 }
 
-impl<Node, Edge, Ratio> MinCycleRatioSolver<Node, Edge, Ratio> {
+impl<Node, Arc, Ratio> MinCycleRatioSolver<Node, Arc, Ratio> {
     fn run(&self, dist: &mut HashMap<Node, Domain>, r0: Ratio) -> (Ratio, Cycle) {
         // Implementation here
     }

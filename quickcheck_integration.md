@@ -35,9 +35,9 @@ Created `examples/quickcheck_tests.rs` with comprehensive property-based tests:
 |------|-------------|
 | `bellman_ford_source_distance_is_zero` | Property: distance from source to itself is always 0 |
 | `bellman_ford_distances_nonnegative` | Property: all distances are non-negative |
-| `bellman_ford_empty_graph` | Edge case: handles empty graph |
-| `bellman_ford_single_node` | Edge case: handles single node |
-| `neg_cycle_finder_howard_empty_graph` | Edge case: Howard's algorithm on empty graph |
+| `bellman_ford_empty_graph` | Arc case: handles empty graph |
+| `bellman_ford_single_node` | Arc case: handles single node |
+| `neg_cycle_finder_howard_empty_graph` | Arc case: Howard's algorithm on empty graph |
 
 ### 3. Custom Arbitrary Implementation
 

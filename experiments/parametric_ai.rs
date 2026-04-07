@@ -40,21 +40,21 @@ impl Ord for Domain {
 }
 
 #[derive(Debug)]
-struct Edge<T: Ord + 'static> {
+struct Arc<T: Ord + 'static> {
     id: T,
     weight: EdgeWeight,
 }
 
-impl<T: Ord + 'static> Edge<T> {
+impl<T: Ord + 'static> Arc<T> {
     fn new(id1: T, id2: T, weight: EdgeWeight) -> Self {
-        Edge { id1, id2, weight }
+        Arc { id1, id2, weight }
     }
 }
 
 #[derive(Debug)]
 struct Graph<T: Ord + 'static> {
     nodes: HashMap<T, Node<T>>,
-    edges: Vec<Edge<T>>,
+    edges: Vec<Arc<T>>,
 }
 
 impl<T: Ord + 'static> Graph<T> {
@@ -74,7 +74,7 @@ impl<T: Ord + 'static> Graph<T> {
     }
 
     fn add_edge(&mut self, id1: T, id2: T, weight: EdgeWeight) {
-        let edge = Edge::new(id1, id2, weight);
+        let edge = Arc::new(id1, id2, weight);
         self.edges.push(edge);
     }
 }
@@ -84,7 +84,7 @@ Now we can implement the `ParametricAPI`, `NegCycleFinder`, and `MaxParametricSo
 
 ```rust
 struct ParametricAPI<N, E, R> {
-    distance: fn(&R, &Edge<usize>) -> Domain,
+    distance: fn(&R, &Arc<usize>) -> Domain,
     zero_cancel: fn(&Vec<Node<usize>>) -> Domain,
 }
 
