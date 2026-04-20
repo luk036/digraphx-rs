@@ -2,6 +2,7 @@
 name = "digraphx-rs"
 version = "0.1.2"
 edition = "2021"
+rust-version = "1.70"
 description = "Network Optimization Algorithms in Rust"
 repository = "https://github.com/luk036/digraphx-rs"
 license = "MIT OR Apache-2.0"

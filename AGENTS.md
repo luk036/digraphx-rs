@@ -28,7 +28,7 @@ Example: `cargo test bellman_ford_simple`
 
 ### Naming Conventions
 - **Structs**: PascalCase (e.g., `NegCycleFinder`, `MaxParametricSolver`, `Paths`)
-- **Traits**: PascalCase (e.g., `ParametricAPI`)
+- **Traits**: PascalCase (e.g., `Parametric_api`)
 - **Functions & Methods**: snake_case (e.g., `bellman_ford`, `find_negative_cycle`, `new`, `run`)
 - **Constants**: UPPER_SNAKE_CASE
 - **Type Parameters**: Single uppercase letters (e.g., `V`, `R`, `P`, `G`, `E`)
@@ -95,7 +95,7 @@ impl<'a, V, R, P> MaxParametricSolver<'a, V, R, P>
 where
     R: Copy + PartialOrd + Add<Output = R> + Sub<Output = R>,
     V: Eq + Hash + Clone,
-    P: ParametricAPI<V, R>,
+    P: Parametric_api<V, R>,
 ```
 
 ### Testing Organization
@@ -121,11 +121,41 @@ mod tests {
 }
 ```
 
+### Coding Patterns
+
+#### Early Returns
+Use early returns to reduce nesting and improve readability.
+
+```rust
+'outer: for i in g.node_identifiers() {
+    for edge in g.edges(i) {
+        let j = edge.target();
+        if distance[ix(i)] + w < distance[ix(j)] {
+            // Negative cycle found
+            break 'outer;
+        }
+    }
+}
+```
+
+#### Closure Patterns
+Leverage closures for flexible edge weight computation.
+
+```rust
+pub fn relax<Callable>(&mut self, dist: &mut [Domain], get_weight: Callable) -> bool
+where
+    Callable: Fn(EdgeReference<Domain>) -> Domain,
+{
+    // ...
+}
+```
+
 ### Project Structure
 - `src/lib.rs` - Main library entry point, module declarations
 - `src/neg_cycle.rs` - Negative cycle detection algorithms
-- `src/parametric.rs` - Parametric algorithms
+- `src/parametric.rs` - Parametric optimization algorithms
 - `src/main.rs` - Example usage/demonstration
+- `src/prelude.rs` - Convenient re-exports
 - No separate `tests/` directory - all tests are inline
 
 ### Dependencies
@@ -133,9 +163,17 @@ mod tests {
 - **num**: Numeric traits (version 0.4.3)
 - **num-traits**: Numeric trait definitions (version 0.2.19)
 
+### Examples Directory
+The `examples/` directory contains runnable examples. Run with:
+
+```bash
+cargo run --example <example_name>
+```
+
 ### General Guidelines
 - Follow Rust 2021 edition conventions
 - Prefer `#[inline(always)]` for performance-critical small functions
 - Use `#[derive(Debug)]` for structs that benefit from debug output
 - Keep functions focused and single-purpose
 - Document complex algorithms with references to original papers
+- Always run `cargo clippy` and `cargo fmt` before committing

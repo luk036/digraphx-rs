@@ -341,6 +341,100 @@ where
 mod tests {
     use super::*;
     use petgraph::Graph;
+    use quickcheck::{quickcheck, Arbitrary, Gen};
+
+    #[derive(Clone, Debug)]
+    struct FloatGraph(Graph<(), f32>);
+
+    impl Arbitrary for FloatGraph {
+        fn arbitrary(g: &mut Gen) -> Self {
+            let mut graph = Graph::new();
+            let size = usize::arbitrary(g) % 5 + 1;
+            let nodes: Vec<_> = (0..size).map(|_| graph.add_node(())).collect();
+            for i in 0..size {
+                for j in (i + 1)..size {
+                    if bool::arbitrary(g) {
+                        let weight = f32::arbitrary(g);
+                        if weight.is_finite() {
+                            graph.add_edge(nodes[i], nodes[j], weight);
+                        }
+                    }
+                }
+            }
+            FloatGraph(graph)
+        }
+    }
+
+    quickcheck! {
+        fn test_bellman_ford_no_negative_cycle(graph: FloatGraph) -> bool {
+            let source = NodeIndex::new(0);
+            if graph.0.node_count() == 0 {
+                return true;
+            }
+            bellman_ford(&graph.0, source).is_ok()
+        }
+
+        fn test_bellman_ford_source_distance_zero(graph: FloatGraph) -> bool {
+            let source = NodeIndex::new(0);
+            if graph.0.node_count() == 0 {
+                return true;
+            }
+            match bellman_ford(&graph.0, source) {
+                Ok(paths) => paths.distances[0] == 0.0,
+                Err(_) => true,
+            }
+        }
+
+        fn test_bellman_ford_distances_are_reachable(graph: FloatGraph) -> bool {
+            let source = NodeIndex::new(0);
+            if graph.0.node_count() == 0 {
+                return true;
+            }
+            match bellman_ford(&graph.0, source) {
+                Ok(paths) => {
+                    for (i, d) in paths.distances.iter().enumerate() {
+                        if let Some(pred) = paths.predecessors[i] {
+                            if !d.is_infinite() && pred.index() >= i {
+                                return false;
+                            }
+                        }
+                    }
+                    true
+                }
+                Err(_) => true,
+            }
+        }
+
+        fn test_bellman_ford_path_reconstruction(graph: FloatGraph) -> bool {
+            let source = NodeIndex::new(0);
+            if graph.0.node_count() < 2 {
+                return true;
+            }
+            match bellman_ford(&graph.0, source) {
+                Ok(paths) => {
+                    for (i, pred) in paths.predecessors.iter().enumerate() {
+                        if let Some(p) = pred {
+                            let pred_dist = paths.distances[p.index()];
+                            if pred_dist.is_finite() {
+                                let mut found_edge = false;
+                                for edge in graph.0.edges(*p) {
+                                    if edge.target() == NodeIndex::new(i) {
+                                        found_edge = true;
+                                        break;
+                                    }
+                                }
+                                if !found_edge && i != p.index() {
+                                    return false;
+                                }
+                            }
+                        }
+                    }
+                    true
+                }
+                Err(_) => true,
+            }
+        }
+    }
 
     #[test]
     fn test_bellman_ford_simple() {
