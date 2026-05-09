@@ -186,7 +186,7 @@ use digraphx_rs::logging::init_logger;
 fn main() {
     init_logger();
     log::info!("Application started");
-    
+
     // Use digraphx-rs functions
     let paths = bellman_ford(&g, source);
     log::debug!("Paths calculated: {:?}", paths);
