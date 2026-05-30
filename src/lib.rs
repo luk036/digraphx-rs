@@ -2,33 +2,31 @@
 //!
 //! Network optimization algorithms in Rust.
 //!
-//! ## Features
+//! A directed graph is treated as a **container of containers**:
+//! - The outer container maps each node to its neighbors
+//! - The inner container maps each neighbor to an edge weight
 //!
-//! - **Bellman-Ford** - Shortest path algorithm with support for negative edge weights
-//! - **Negative Cycle Detection** - Find and report cycles with negative total weight
-//! - **Parametric Algorithms** - Maximum cycle ratio and related optimization problems
-//! - **Howard's Algorithm** - Efficient negative cycle detection for large graphs
+//! This matches the Python `dict-of-dicts` and C++ `unordered_map<K, unordered_map<K, V>>`
+//! patterns. Any type implementing the [`Graph`] trait can be used with the algorithms.
 //!
 //! ## Quick Start
 //!
 //! ```rust
-//! use digraphx_rs::bellman_ford;
-//! use petgraph::Graph;
+//! use std::collections::HashMap;
+//! use digraphx_rs::{Graph, NegCycleFinder};
 //!
-//! let mut g = Graph::new();
-//! let a = g.add_node(());
-//! let b = g.add_node(());
-//! g.extend_with_edges([(a, b, 4.0)]);
+//! // A graph as HashMap<Node, HashMap<Node, Weight>>
+//! let mut graph: HashMap<&str, HashMap<&str, i32>> = HashMap::new();
+//! graph.insert("a", [("b", 1), ("c", 1)].into());
+//! graph.insert("b", [("c", 1)].into());
+//! graph.insert("c", [("a", -3)].into());
 //!
-//! let paths = bellman_ford(&g, a).unwrap();
-//! println!("Distances: {:?}", paths.distances);
+//! let mut ncf = NegCycleFinder::new(&graph);
+//! let mut dist: HashMap<&str, i32> =
+//!     [("a", 0), ("b", 0), ("c", 0)].into();
+//! let cycle = ncf.howard(&mut dist, |w| *w);
+//! assert!(cycle.is_some());
 //! ```
-//!
-//! ## Modules
-//!
-//! - [`neg_cycle`] - Negative cycle detection algorithms
-//! - [`parametric`] - Parametric optimization algorithms
-//! - `logging` - Logging utilities (available with `std` feature)
 
 pub mod neg_cycle;
 pub mod parametric;
@@ -38,443 +36,302 @@ pub mod logging;
 
 pub mod prelude;
 
-use petgraph::prelude::*;
+use std::collections::HashMap;
+use std::hash::Hash;
+use std::ops::Add;
 
-use petgraph::algo::{FloatMeasure, NegativeCycle};
-use petgraph::visit::{
-    IntoEdges, IntoNodeIdentifiers, NodeCount, NodeIndexable, VisitMap, Visitable,
-};
+// ---------------------------------------------------------------------------
+// Graph trait — the graph as a container of containers
+// ---------------------------------------------------------------------------
 
-/// Result of shortest path computation.
+/// A directed graph viewed as a container of containers.
 ///
-/// Contains distances from the source node to all other nodes,
-/// and predecessor information to reconstruct paths.
-#[derive(Debug, Clone)]
-pub struct Paths<NodeId, EdgeWeight> {
-    /// Distance from source to each node (indexed by node index)
-    pub distances: Vec<EdgeWeight>,
-    /// Predecessor node for each node along the shortest path
-    pub predecessors: Vec<Option<NodeId>>,
-}
-
-/// Compute shortest paths from node `source` to all other.
+/// The basic assumption is that a graph maps each node to a container of its
+/// outgoing edges.  Iterating over the outer container yields node–neighbors
+/// pairs; iterating over the inner container yields (neighbor, weight) pairs.
 ///
-/// Using the [Bellman–Ford algorithm][bf]; negative edge costs are
-/// permitted, but the graph must not have a cycle of negative weights
-/// (in that case it will return an error).
+/// # Provided implementations
 ///
-/// On success, return one vec with path costs, and another one which points
-/// out the predecessor of a node along a shortest path. The vectors
-/// are indexed by the graph's node indices.
-///
-/// # Complexity
-///
-/// - **Time**: O(V * E) where V is the number of vertices and E is the number of edges
-/// - **Space**: O(V) for the distance and predecessor arrays
-///
-/// [bf]: https://en.wikipedia.org/wiki/Bellman%E2%80%93Ford_algorithm
+/// | Container                          | Node    | Weight |
+/// |------------------------------------|---------|--------|
+/// | `HashMap<N, HashMap<N, W>>`       | `N`     | `W`    |
+/// | `BTreeMap<N, BTreeMap<N, W>>`     | `N`     | `W`    |
 ///
 /// # Example
+///
 /// ```rust
-/// use petgraph::Graph;
-/// use petgraph::algo::bellman_ford;
-/// use petgraph::prelude::*;
+/// use std::collections::HashMap;
+/// use digraphx_rs::Graph;
 ///
-/// let mut g = Graph::new();
-/// let a = g.add_node(()); // node with no weight
-/// let b = g.add_node(());
-/// let c = g.add_node(());
-/// let d = g.add_node(());
-/// let edge = g.add_node(());
-/// let f = g.add_node(());
-/// g.extend_with_edges(&[
-///     (0, 1, 2.0),
-///     (0, 3, 4.0),
-///     (1, 2, 1.0),
-///     (1, 5, 7.0),
-///     (2, 4, 5.0),
-///     (4, 5, 1.0),
-///     (3, 4, 1.0),
-/// ]);
-///
-/// // Graph represented with the weight of each edge
-/// //
-/// //     2       1
-/// // a ----- b ----- c
-/// // | 4     | 7     |
-/// // d       f       | 5
-/// // | 1     | 1     |
-/// // \------ edge ------/
-///
-/// let path = bellman_ford(&g, a);
-/// assert!(path.is_ok());
-/// let path = path.unwrap();
-/// assert_eq!(path.distances, vec![    0.0,     2.0,    3.0,    4.0,     5.0,     6.0]);
-/// assert_eq!(path.predecessors, vec![None, Some(a),Some(b),Some(a), Some(d), Some(edge)]);
-///
-/// // Node f (indice 5) can be reach from a with a path costing 6.
-/// // Predecessor of f is Some(edge) which predecessor is Some(d) which predecessor is Some(a).
-/// // Thus the path from a to f is a <-> d <-> edge <-> f
-///
-/// let graph_with_neg_cycle = Graph::<(), f32, Undirected>::from_edges(&[
-///         (0, 1, -2.0),
-///         (0, 3, -4.0),
-///         (1, 2, -1.0),
-///         (1, 5, -25.0),
-///         (2, 4, -5.0),
-///         (4, 5, -25.0),
-///         (3, 4, -1.0),
-/// ]);
-///
-/// assert!(bellman_ford(&graph_with_neg_cycle, NodeIndex::new(0)).is_err());
-///
-/// // Graph with no edges
-/// let mut g_no_edges = Graph::<(), f32, Directed>::new();
-/// let n0 = g_no_edges.add_node(());
-/// let path_no_edges = bellman_ford(&g_no_edges, n0);
-/// assert!(path_no_edges.is_ok());
-/// assert_eq!(path_no_edges.unwrap().distances, vec![0.0]);
-///
-/// // Disconnected graph
-/// let mut g_disconnected = Graph::new();
-/// let dn0 = g_disconnected.add_node(());
-/// let dn1 = g_disconnected.add_node(());
-/// let dn2 = g_disconnected.add_node(());
-/// g_disconnected.add_edge(dn0, dn1, 1.0);
-/// let path_disconnected = bellman_ford(&g_disconnected, dn0);
-/// assert!(path_disconnected.is_ok());
-/// let unwrapped_path = path_disconnected.unwrap();
-/// assert_eq!(unwrapped_path.distances, vec![0.0, 1.0, f32::INFINITY]);
-/// assert_eq!(unwrapped_path.predecessors, vec![None, Some(dn0), None]);
+/// let g: HashMap<&str, HashMap<&str, i32>> =
+///     [("a", [("b", 1)].into())].into();
+/// assert_eq!(g.num_nodes(), 1);
 /// ```
-pub fn bellman_ford<G>(
-    g: G,
-    source: G::NodeId,
-) -> Result<Paths<G::NodeId, G::EdgeWeight>, NegativeCycle>
-where
-    G: NodeCount + IntoNodeIdentifiers + IntoEdges + NodeIndexable,
-    G::EdgeWeight: FloatMeasure,
-{
-    let ix = |i| g.to_index(i);
+pub trait Graph {
+    /// Identifier for a node (must be copyable, comparable, hashable).
+    type Node: Copy + Eq + Hash;
 
-    // Step 1 and Step 2: initialize and relax
-    let (distances, predecessors) = bellman_ford_initialize_relax(g, source);
+    /// Edge weight (must support addition and ordering).
+    type Weight: Copy + Add<Output = Self::Weight> + PartialOrd;
 
-    // Step 3: check for negative weight cycle
-    for i in g.node_identifiers() {
-        for edge in g.edges(i) {
-            let j = edge.target();
-            let w = *edge.weight();
-            if distances[ix(i)] + w < distances[ix(j)] {
-                return Err(NegativeCycle(()));
-            }
-        }
-    }
+    /// Iterator over node identifiers.
+    type Nodes: IntoIterator<Item = Self::Node>;
 
-    Ok(Paths {
-        distances,
-        predecessors,
-    })
+    /// Iterator over (neighbor, weight) pairs for a given node.
+    type Neighbors: IntoIterator<Item = (Self::Node, Self::Weight)>;
+
+    /// Return all nodes in the graph.
+    fn nodes(&self) -> Self::Nodes;
+
+    /// Return an iterator over the outgoing edges of `node`.
+    fn neighbors(&self, node: Self::Node) -> Self::Neighbors;
+
+    /// Return the number of nodes.
+    fn num_nodes(&self) -> usize;
 }
 
-/// Find the path of a negative cycle reachable from node `source`.
+// ---------------------------------------------------------------------------
+// Implementations for standard containers
+// ---------------------------------------------------------------------------
+
+/// Create a [`Graph`] from a slice of edges (node, neighbor, weight) triples.
+/// Useful for small test graphs where writing out nested maps is tedious.
 ///
-/// Using the [find_negative_cycle][nc]; will search the Graph for negative cycles using
-/// [Bellman–Ford algorithm][bf]. If no negative cycle is found the function will return `None`.
-///
-/// If a negative cycle is found from source, return one vec with a path of `NodeId`s.
-///
-/// # Complexity
-///
-/// - **Time**: O(V * E) where V is number of vertices and E is number of edges
-/// - **Space**: O(V) for distance and predecessor arrays
-///
-/// The time complexity of this algorithm should be the same as the Bellman-Ford.
-///
-/// [nc]: https://blogs.asarkar.com/assets/docs/algorithms-curated/Negative-Weight%20Cycle%20Algorithms%20-%20Huang.pdf
-/// [bf]: https://en.wikipedia.org/wiki/Bellman%E2%80%93Ford_algorithm
-///
-/// # Example
 /// ```rust
-/// use petgraph::Graph;
-/// use petgraph::algo::find_negative_cycle;
-/// use petgraph::prelude::*;
-///
-/// let graph_with_neg_cycle = Graph::<(), f32, Directed>::from_edges(&[
-///         (0, 1, 1.),
-///         (0, 2, 1.),
-///         (0, 3, 1.),
-///         (1, 3, 1.),
-///         (2, 1, 1.),
-///         (3, 2, -3.),
-/// ]);
-///
-/// let path = find_negative_cycle(&graph_with_neg_cycle, NodeIndex::new(0));
-/// assert_eq!(
-///     path,
-///     Some([NodeIndex::new(1), NodeIndex::new(3), NodeIndex::new(2)].to_vec())
-/// );
-///
-/// // Graph with no negative cycle
-/// let graph_no_neg_cycle = Graph::<(), f32, Directed>::from_edges(&[
-///         (0, 1, 1.),
-///         (1, 2, 1.),
-///         (2, 0, 1.),
-/// ]);
-/// let path_no_neg_cycle = find_negative_cycle(&graph_no_neg_cycle, NodeIndex::new(0));
-/// assert!(path_no_neg_cycle.is_none());
+/// use digraphx_rs::graph_from_edges;
+/// use digraphx_rs::Graph;
+/// let g = graph_from_edges(&[(0, 1, 1), (1, 2, 2), (2, 0, -3)]);
+/// assert_eq!(g.num_nodes(), 3);
 /// ```
-pub fn find_negative_cycle<G>(g: G, source: G::NodeId) -> Option<Vec<G::NodeId>>
+pub fn graph_from_edges<N, W>(edges: &[(N, N, W)]) -> HashMap<N, HashMap<N, W>>
 where
-    G: NodeCount + IntoNodeIdentifiers + IntoEdges + NodeIndexable + Visitable,
-    G::EdgeWeight: FloatMeasure,
+    N: Copy + Eq + Hash,
+    W: Copy,
 {
-    let ix = |i| g.to_index(i);
-    let mut path = Vec::<G::NodeId>::new();
+    let mut g: HashMap<N, HashMap<N, W>> = HashMap::new();
+    for &(u, v, w) in edges {
+        g.entry(u).or_default().insert(v, w);
+        g.entry(v).or_default(); // ensure isolated nodes are present
+    }
+    g
+}
 
-    // Step 1: initialize and relax
-    let (distance, predecessor) = bellman_ford_initialize_relax(g, source);
+// --- HashMap<N, HashMap<N, W>> -------------------------------------------
 
-    // Step 2: Check for negative weight cycle
-    'outer: for i in g.node_identifiers() {
-        for edge in g.edges(i) {
-            let j = edge.target();
-            let w = *edge.weight();
-            if distance[ix(i)] + w < distance[ix(j)] {
-                // Step 3: negative cycle found
-                let mut node = j;
-                let mut path_set = g.visit_map();
-                while path_set.visit(node) {
-                    node = predecessor[ix(node)].unwrap();
-                }
+impl<N, W> Graph for HashMap<N, HashMap<N, W>>
+where
+    N: Copy + Eq + Hash,
+    W: Copy + Add<Output = W> + PartialOrd,
+{
+    type Node = N;
+    type Weight = W;
+    type Nodes = std::vec::IntoIter<N>;
+    type Neighbors = std::vec::IntoIter<(N, W)>;
 
-                let mut cycle_node = node;
-                loop {
-                    path.push(cycle_node);
-                    cycle_node = predecessor[ix(cycle_node)].unwrap();
-                    if cycle_node == node {
-                        path.push(cycle_node);
-                        break;
-                    }
-                }
-                path.reverse();
-                path.pop();
-                // We are done here
-                break 'outer;
-            }
+    fn nodes(&self) -> Self::Nodes {
+        self.keys().copied().collect::<Vec<_>>().into_iter()
+    }
+
+    fn neighbors(&self, node: N) -> Self::Neighbors {
+        match self.get(&node) {
+            Some(nbrs) => nbrs
+                .iter()
+                .map(|(&k, &v)| (k, v))
+                .collect::<Vec<_>>()
+                .into_iter(),
+            None => Vec::new().into_iter(),
         }
     }
-    if !path.is_empty() {
-        // Users will probably need to follow the path of the negative cycle
-        // so it should be in the reverse order than it was found by the algorithm.
-        path.reverse();
-        Some(path)
-    } else {
-        None
+
+    fn num_nodes(&self) -> usize {
+        self.len()
     }
 }
 
-/// Perform Step 1 and Step 2 of the Bellman-Ford algorithm.
-///
-/// This function initializes distances and predecessors, then performs
-/// the relaxation step of the Bellman-Ford algorithm.
-///
-/// # Complexity
-///
-/// - **Time**: O(V * E) where V is number of vertices and E is number of edges
-/// - **Space**: O(V) for distance and predecessor arrays
-///
-/// # Example
-/// ```rust
-/// use petgraph::Graph;
-/// use digraphx_rs::bellman_ford_initialize_relax;
-/// use petgraph::prelude::*;
-///
-/// let mut g = Graph::new();
-/// let a = g.add_node(());
-/// let b = g.add_node(());
-/// let c = g.add_node(());
-/// g.extend_with_edges(&[(a, b, 1.0), (b, c, 1.0), (a, c, 3.0)]);
-/// let (distances, predecessors) = bellman_ford_initialize_relax(&g, a);
-/// assert_eq!(distances[0], 0.0); // distance to source is 0
-/// assert_eq!(distances[1], 1.0); // distance to b from a
-/// assert_eq!(predecessors[0], None); // source has no predecessor
-/// assert_eq!(predecessors[1], Some(a)); // predecessor of b is a
-/// ```
-#[inline(always)]
-pub fn bellman_ford_initialize_relax<G>(
-    g: G,
-    source: G::NodeId,
-) -> (Vec<G::EdgeWeight>, Vec<Option<G::NodeId>>)
-where
-    G: NodeCount + IntoNodeIdentifiers + IntoEdges + NodeIndexable,
-    G::EdgeWeight: FloatMeasure,
-{
-    // Step 1: initialize graph
-    let mut predecessor = vec![None; g.node_bound()];
-    let mut distance = vec![<_>::infinite(); g.node_bound()];
-    let ix = |i| g.to_index(i);
-    distance[ix(source)] = <_>::zero();
+// --- BTreeMap<N, BTreeMap<N, W>> -----------------------------------------
 
-    // Step 2: relax edges repeatedly
-    for _ in 1..g.node_count() {
-        let mut did_update = false;
-        for i in g.node_identifiers() {
-            for edge in g.edges(i) {
-                let j = edge.target();
-                let w = *edge.weight();
-                if distance[ix(i)] + w < distance[ix(j)] {
-                    distance[ix(j)] = distance[ix(i)] + w;
-                    predecessor[ix(j)] = Some(i);
-                    did_update = true;
-                }
-            }
-        }
-        if !did_update {
-            break;
+impl<N, W> Graph for std::collections::BTreeMap<N, std::collections::BTreeMap<N, W>>
+where
+    N: Copy + Eq + Hash + Ord,
+    W: Copy + Add<Output = W> + PartialOrd,
+{
+    type Node = N;
+    type Weight = W;
+    type Nodes = std::vec::IntoIter<N>;
+    type Neighbors = std::vec::IntoIter<(N, W)>;
+
+    fn nodes(&self) -> Self::Nodes {
+        self.keys().copied().collect::<Vec<_>>().into_iter()
+    }
+
+    fn neighbors(&self, node: N) -> Self::Neighbors {
+        match self.get(&node) {
+            Some(nbrs) => nbrs
+                .iter()
+                .map(|(&k, &v)| (k, v))
+                .collect::<Vec<_>>()
+                .into_iter(),
+            None => Vec::new().into_iter(),
         }
     }
-    (distance, predecessor)
+
+    fn num_nodes(&self) -> usize {
+        self.len()
+    }
 }
+
+// ---------------------------------------------------------------------------
+// petgraph adapter (behind "petgraph" feature gate)
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "petgraph")]
+pub mod petgraph_adapter {
+    use super::*;
+    use petgraph::graph::DiGraph;
+    use petgraph::graph::NodeIndex;
+    use petgraph::visit::EdgeRef;
+
+    /// Adapter that lets a [`DiGraph`] be used as a [`Graph`].
+    ///
+    /// ```rust
+    /// #[cfg(feature = "petgraph")]
+    /// {
+    ///     use petgraph::graph::DiGraph;
+    ///     use digraphx_rs::{Graph, PetGraph};
+    ///
+    ///     let mut g = DiGraph::new();
+    ///     let a = g.add_node(());
+    ///     let b = g.add_node(());
+    ///     g.add_edge(a, b, 1.0);
+    ///
+    ///     let pg = PetGraph(&g);
+    ///     assert_eq!(pg.num_nodes(), 2);
+    /// }
+    /// ```
+    pub struct PetGraph<'a, V, E>(pub &'a DiGraph<V, E>);
+
+    impl<'a, V, E> Graph for PetGraph<'a, V, E>
+    where
+        V: 'a,
+        E: Copy + Add<Output = E> + PartialOrd + 'a,
+    {
+        type Node = NodeIndex;
+        type Weight = E;
+        type Nodes = std::vec::IntoIter<NodeIndex>;
+        type Neighbors = PetNeighbors<'a, E>;
+
+        fn nodes(&self) -> Self::Nodes {
+            self.0.node_indices().collect::<Vec<_>>().into_iter()
+        }
+
+        fn neighbors(&self, node: NodeIndex) -> Self::Neighbors {
+            PetNeighbors {
+                iter: self.0.edges(node),
+            }
+        }
+
+        fn num_nodes(&self) -> usize {
+            self.0.node_count()
+        }
+    }
+
+    /// Iterator over petgraph edges, yielding (neighbor, weight).
+    pub struct PetNeighbors<'a, E> {
+        iter: petgraph::graph::Edges<'a, E, petgraph::Directed>,
+    }
+
+    impl<'a, E> Iterator for PetNeighbors<'a, E>
+    where
+        E: Copy,
+    {
+        type Item = (NodeIndex, E);
+        fn next(&mut self) -> Option<Self::Item> {
+            self.iter.next().map(|e| (e.target(), *e.weight()))
+        }
+    }
+}
+
+#[cfg(feature = "petgraph")]
+pub use petgraph_adapter::PetGraph;
+
+// ---------------------------------------------------------------------------
+// Zero helper (internal)
+// ---------------------------------------------------------------------------
+
+/// Trait for additive identity.
+pub trait Zero: Sized {
+    fn zero() -> Self;
+}
+
+impl Zero for i32 {
+    fn zero() -> Self {
+        0
+    }
+}
+impl Zero for f32 {
+    fn zero() -> Self {
+        0.0
+    }
+}
+impl Zero for f64 {
+    fn zero() -> Self {
+        0.0
+    }
+}
+impl<T: num::Integer + Clone> Zero for num::rational::Ratio<T> {
+    fn zero() -> Self {
+        num::rational::Ratio::new(
+            <T as num::traits::Zero>::zero(),
+            <T as num::traits::One>::one(),
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Re-exports
+// ---------------------------------------------------------------------------
+
+pub use neg_cycle::NegCycleFinder;
+pub use neg_cycle::NegCycleFinderQ;
+pub use parametric::{MaxParametricSolver, ParametricAPI};
+
+/// Cycle type: a sequence of node IDs.
+pub type Cycle<N> = Vec<N>;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use petgraph::Graph;
-    use quickcheck::{quickcheck, Arbitrary, Gen};
 
-    #[derive(Clone, Debug)]
-    struct FloatGraph(Graph<(), f32>);
-
-    impl Arbitrary for FloatGraph {
-        fn arbitrary(g: &mut Gen) -> Self {
-            let mut graph = Graph::new();
-            let size = usize::arbitrary(g) % 5 + 1;
-            let nodes: Vec<_> = (0..size).map(|_| graph.add_node(())).collect();
-            for i in 0..size {
-                for j in (i + 1)..size {
-                    if bool::arbitrary(g) {
-                        let weight = f32::arbitrary(g);
-                        if weight.is_finite() {
-                            graph.add_edge(nodes[i], nodes[j], weight);
-                        }
-                    }
-                }
-            }
-            FloatGraph(graph)
-        }
-    }
-
-    quickcheck! {
-        fn test_bellman_ford_no_negative_cycle(graph: FloatGraph) -> bool {
-            let source = NodeIndex::new(0);
-            if graph.0.node_count() == 0 {
-                return true;
-            }
-            bellman_ford(&graph.0, source).is_ok()
-        }
-
-        fn test_bellman_ford_source_distance_zero(graph: FloatGraph) -> bool {
-            let source = NodeIndex::new(0);
-            if graph.0.node_count() == 0 {
-                return true;
-            }
-            match bellman_ford(&graph.0, source) {
-                Ok(paths) => paths.distances[0] == 0.0,
-                Err(_) => true,
-            }
-        }
-
-        fn test_bellman_ford_distances_are_reachable(graph: FloatGraph) -> bool {
-            let source = NodeIndex::new(0);
-            if graph.0.node_count() == 0 {
-                return true;
-            }
-            match bellman_ford(&graph.0, source) {
-                Ok(paths) => {
-                    for (i, d) in paths.distances.iter().enumerate() {
-                        if let Some(pred) = paths.predecessors[i] {
-                            if !d.is_infinite() && pred.index() >= i {
-                                return false;
-                            }
-                        }
-                    }
-                    true
-                }
-                Err(_) => true,
-            }
-        }
-
-        fn test_bellman_ford_path_reconstruction(graph: FloatGraph) -> bool {
-            let source = NodeIndex::new(0);
-            if graph.0.node_count() < 2 {
-                return true;
-            }
-            match bellman_ford(&graph.0, source) {
-                Ok(paths) => {
-                    for (i, pred) in paths.predecessors.iter().enumerate() {
-                        if let Some(p) = pred {
-                            let pred_dist = paths.distances[p.index()];
-                            if pred_dist.is_finite() {
-                                let mut found_edge = false;
-                                for edge in graph.0.edges(*p) {
-                                    if edge.target() == NodeIndex::new(i) {
-                                        found_edge = true;
-                                        break;
-                                    }
-                                }
-                                if !found_edge && i != p.index() {
-                                    return false;
-                                }
-                            }
-                        }
-                    }
-                    true
-                }
-                Err(_) => true,
-            }
-        }
+    #[test]
+    fn test_graph_trait_hashmap_nodes() {
+        let g: HashMap<&str, HashMap<&str, i32>> =
+            [("a", [("b", 1)].into()), ("b", [("a", 2)].into())].into();
+        let nodes: Vec<_> = g.nodes().collect();
+        assert_eq!(nodes.len(), 2);
+        assert!(nodes.contains(&"a"));
+        assert!(nodes.contains(&"b"));
     }
 
     #[test]
-    fn test_bellman_ford_simple() {
-        let mut g = Graph::new();
-        let a = g.add_node(());
-        let b = g.add_node(());
-        let c = g.add_node(());
-        g.extend_with_edges([(a, b, 1.0), (b, c, 1.0), (a, c, 3.0)]);
-        let path = bellman_ford(&g, a).unwrap();
-        assert_eq!(path.distances, vec![0.0, 1.0, 2.0]);
-        assert_eq!(path.predecessors, vec![None, Some(a), Some(b)]);
+    fn test_graph_trait_hashmap_neighbors() {
+        let g: HashMap<&str, HashMap<&str, i32>> = [("a", [("b", 5)].into())].into();
+        let nbrs: Vec<_> = g.neighbors("a").collect();
+        assert_eq!(nbrs, vec![("b", 5)]);
     }
 
     #[test]
-    fn test_bellman_ford_negative_cycle() {
-        let mut g = Graph::new();
-        let a = g.add_node(());
-        let b = g.add_node(());
-        g.extend_with_edges([(a, b, 1.0), (b, a, -2.0)]);
-        let path = bellman_ford(&g, a);
-        assert!(path.is_err());
+    fn test_graph_from_edges() {
+        let g = graph_from_edges(&[(0, 1, 1), (1, 2, 2), (2, 0, -3)]);
+        assert_eq!(g.num_nodes(), 3);
+        let nbrs: Vec<_> = g.neighbors(0).collect();
+        assert_eq!(nbrs, vec![(1, 1)]);
     }
 
     #[test]
-    fn test_find_negative_cycle_simple() {
-        let mut g = Graph::new();
-        let a = g.add_node(());
-        let b = g.add_node(());
-        g.extend_with_edges([(a, b, 1.0), (b, a, -2.0)]);
-        let cycle = find_negative_cycle(&g, a).unwrap();
-        assert_eq!(cycle, vec![a, b]);
-    }
-
-    #[test]
-    fn test_find_negative_cycle_none() {
-        let mut g = Graph::new();
-        let a = g.add_node(());
-        let b = g.add_node(());
-        g.extend_with_edges([(a, b, 1.0), (b, a, 2.0)]);
-        let cycle = find_negative_cycle(&g, a);
-        assert!(cycle.is_none());
+    fn test_empty_graph() {
+        let g: HashMap<i32, HashMap<i32, f64>> = HashMap::new();
+        assert_eq!(g.num_nodes(), 0);
+        assert!(g.nodes().collect::<Vec<_>>().is_empty());
+        assert!(g.neighbors(0).collect::<Vec<_>>().is_empty());
     }
 }

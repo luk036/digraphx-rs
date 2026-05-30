@@ -1,20 +1,23 @@
-use petgraph::algo::find_negative_cycle;
-use petgraph::prelude::*;
-use petgraph::Graph;
+//! Example usage of digraphx-rs with the generic graph API.
+
+use digraphx_rs::NegCycleFinder;
+use std::collections::HashMap;
 
 fn main() {
-    let graph_with_neg_cycle = Graph::<(), f32, Directed>::from_edges([
-        (0, 1, 1.),
-        (0, 2, 1.),
-        (0, 3, 1.),
-        (1, 3, 1.),
-        (2, 1, 1.),
-        (3, 2, -3.),
-    ]);
+    // A graph as HashMap<Node, HashMap<Node, Weight>> — the canonical
+    // "container of containers" representation.
+    let graph: HashMap<&str, HashMap<&str, i32>> = [
+        ("a", [("b", 1), ("c", 1)].into()),
+        ("b", [("c", 1)].into()),
+        ("c", [("a", -3)].into()),
+    ]
+    .into();
 
-    let path = find_negative_cycle(&graph_with_neg_cycle, NodeIndex::new(0));
-    assert_eq!(
-        path,
-        Some([NodeIndex::new(1), NodeIndex::new(3), NodeIndex::new(2)].to_vec())
-    );
+    let mut ncf = NegCycleFinder::new(&graph);
+    let mut dist: HashMap<&str, i32> = [("a", 0), ("b", 0), ("c", 0)].into();
+
+    match ncf.howard(&mut dist, |w| *w) {
+        Some(cycle) => println!("Found negative cycle with edges: {:?}", cycle),
+        None => println!("No negative cycle found"),
+    }
 }

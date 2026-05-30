@@ -1,27 +1,26 @@
 [package]
 name = "digraphx-rs"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.70"
-description = "Network Optimization Algorithms in Rust"
+description = "Network Optimization Algorithms in Rust — generic container-of-containers graph"
 repository = "https://github.com/luk036/digraphx-rs"
 license = "MIT OR Apache-2.0"
 
 [features]
 default = []
-serde = ["petgraph/serde"]
-benchmark = []
-std = ["num-traits/std", "dep:env_logger", "dep:log"]
+std = ["dep:log", "dep:env_logger"]
+petgraph = ["dep:petgraph"]
 
 [dependencies]
-num = { version = "0.4.3" }
-num-traits = { version = "0.2.19" }
+num = "0.4.3"
 log = { version = "0.4", optional = true }
 env_logger = { version = "0.11", optional = true }
 
 [dependencies.petgraph]
 version = "0.8.2"
 features = ["serde-1"]
+optional = true
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

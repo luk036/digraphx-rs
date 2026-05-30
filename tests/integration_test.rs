@@ -1,141 +1,92 @@
-//! Integration tests for digraphx-rs
+//! Integration tests for digraphx-rs using generic graph containers.
 
-use digraphx_rs::{
-    bellman_ford, find_negative_cycle,
-    neg_cycle::NegCycleFinder,
-    parametric::{MaxParametricSolver, ParametricAPI},
-};
-use num::rational::Ratio;
-use petgraph::{
-    graph::{DiGraph, EdgeReference},
-    Graph,
-};
+use digraphx_rs::graph_from_edges;
+use digraphx_rs::parametric::{MaxParametricSolver, ParametricAPI};
+use digraphx_rs::NegCycleFinder;
+use std::collections::HashMap;
 
 #[test]
-fn test_bellman_ford_integration() {
-    let mut g = Graph::new();
-    let a = g.add_node(());
-    let b = g.add_node(());
-    let c = g.add_node(());
+fn test_neg_cycle_hashmap_string() {
+    let mut graph: HashMap<&str, HashMap<&str, i32>> = HashMap::new();
+    graph.insert("a", [("b", 1), ("c", 1)].into());
+    graph.insert("b", [("c", 1)].into());
+    graph.insert("c", [("a", -3)].into());
 
-    g.extend_with_edges([(a, b, 4.0), (b, c, 3.0), (a, c, 10.0)]);
-
-    let paths = bellman_ford(&g, a).unwrap();
-    assert_eq!(paths.distances, vec![0.0, 4.0, 7.0]);
-    assert_eq!(paths.predecessors, vec![None, Some(a), Some(b)]);
-}
-
-#[test]
-fn test_negative_cycle_detection_integration() {
-    let mut g = Graph::new();
-    let a = g.add_node(());
-    let b = g.add_node(());
-    let c = g.add_node(());
-
-    g.extend_with_edges([(a, b, 1.0), (b, c, 1.0), (c, a, -3.0)]);
-
-    let cycle = find_negative_cycle(&g, a).unwrap();
-    assert_eq!(cycle.len(), 3);
-}
-
-#[test]
-fn test_no_negative_cycle_integration() {
-    let mut g = Graph::new();
-    let a = g.add_node(());
-    let b = g.add_node(());
-    let c = g.add_node(());
-
-    g.extend_with_edges([(a, b, 1.0), (b, c, 1.0), (c, a, 1.0)]);
-
-    let cycle = find_negative_cycle(&g, a);
-    assert!(cycle.is_none());
-}
-
-#[test]
-fn test_disconnected_graph_integration() {
-    let mut g = Graph::new();
-    let a = g.add_node(());
-    let b = g.add_node(());
-    let c = g.add_node(());
-
-    g.add_edge(a, b, 1.0);
-
-    let paths = bellman_ford(&g, a).unwrap();
-    assert_eq!(paths.distances[a.index()], 0.0);
-    assert_eq!(paths.distances[b.index()], 1.0);
-    assert_eq!(paths.distances[c.index()], f32::INFINITY);
-}
-
-#[test]
-fn test_neg_cycle_finder_howard() {
-    let digraph = DiGraph::<(), Ratio<i32>>::from_edges([
-        (0, 1, Ratio::new(1, 1)),
-        (0, 2, Ratio::new(1, 1)),
-        (0, 3, Ratio::new(1, 1)),
-        (1, 3, Ratio::new(1, 1)),
-        (2, 1, Ratio::new(1, 1)),
-        (3, 2, Ratio::new(-3, 1)),
-    ]);
-
-    let mut ncf = NegCycleFinder::new(&digraph);
-    let mut dist = [
-        Ratio::new(0, 1),
-        Ratio::new(0, 1),
-        Ratio::new(0, 1),
-        Ratio::new(0, 1),
-    ];
-    let result = ncf.howard(&mut dist, |e| *e.weight());
-
+    let mut ncf = NegCycleFinder::new(&graph);
+    let mut dist: HashMap<&str, i32> = [("a", 0), ("b", 0), ("c", 0)].into();
+    let result = ncf.howard(&mut dist, |w| *w);
     assert!(result.is_some());
 }
 
 #[test]
-fn test_parametric_solver_integration() {
-    #[derive(Debug)]
-    struct MyRatio {}
-
-    impl<V> ParametricAPI<V, Ratio<i32>> for MyRatio
-    where
-        V: Eq + Clone,
-    {
-        fn distance(&self, ratio: &Ratio<i32>, edge: &EdgeReference<Ratio<i32>>) -> Ratio<i32> {
-            *edge.weight() - *ratio
-        }
-
-        fn zero_cancel(&self, cycle: &[EdgeReference<Ratio<i32>>]) -> Ratio<i32> {
-            let mut total_weight = Ratio::new(0, 1);
-            for edge in cycle {
-                total_weight += *edge.weight();
-            }
-            total_weight / Ratio::from_integer(cycle.len() as i32)
-        }
-    }
-
-    let digraph = DiGraph::<(), Ratio<i32>>::from_edges([
-        (0, 1, Ratio::new(1, 1)),
-        (1, 2, Ratio::new(1, 1)),
-        (2, 0, Ratio::new(1, 1)),
-    ]);
-
-    let mut solver = MaxParametricSolver::new(&digraph, MyRatio {});
-    let mut dist = [Ratio::new(0, 1), Ratio::new(0, 1), Ratio::new(0, 1)];
-    let mut ratio = Ratio::new(1_000_000, 1);
-
-    let _cycle = solver.run(&mut dist, &mut ratio);
-
-    assert_eq!(ratio, Ratio::new(1, 1));
+fn test_neg_cycle_graph_from_edges() {
+    let graph = graph_from_edges(&[(0u32, 1u32, 1i32), (1, 2, 1), (2, 0, -3)]);
+    let mut ncf = NegCycleFinder::new(&graph);
+    let mut dist: HashMap<u32, i32> = [(0, 0), (1, 0), (2, 0)].into();
+    let result = ncf.howard(&mut dist, |w| *w);
+    assert!(result.is_some());
 }
 
 #[test]
-fn test_complex_graph_with_multiple_components() {
-    let mut g = Graph::new();
-    let a = g.add_node(());
-    let b = g.add_node(());
-    let c = g.add_node(());
-    let d = g.add_node(());
+fn test_no_neg_cycle_integration() {
+    let graph = graph_from_edges(&[(0u32, 1u32, 1i32), (1, 2, 1), (2, 0, 1)]);
+    let mut ncf = NegCycleFinder::new(&graph);
+    let mut dist: HashMap<u32, i32> = [(0, 0), (1, 0), (2, 0)].into();
+    let result = ncf.howard(&mut dist, |w| *w);
+    assert!(result.is_none());
+}
 
-    g.extend_with_edges([(a, b, 1.0), (b, c, 2.0), (c, d, 3.0)]);
+#[test]
+fn test_parametric_solver_integration() {
+    struct MinCycle;
 
-    let paths = bellman_ford(&g, a).unwrap();
-    assert_eq!(paths.distances, vec![0.0, 1.0, 3.0, 6.0]);
+    impl ParametricAPI<i32> for MinCycle {
+        fn distance(&self, r: &i32, w: &i32) -> i32 {
+            *w - *r
+        }
+        fn zero_cancel(&self, cycle: &[i32]) -> i32 {
+            cycle.iter().sum::<i32>() / cycle.len() as i32
+        }
+    }
+
+    let graph = graph_from_edges(&[
+        (0i32, 1i32, 5i32),
+        (0, 2, 1),
+        (1, 0, 1),
+        (1, 2, 1),
+        (2, 1, 1),
+        (2, 0, 1),
+    ]);
+    let mut solver = MaxParametricSolver::new(&graph, MinCycle);
+    let mut dist: HashMap<i32, i32> = [(0, 0), (1, 0), (2, 0)].into();
+    let mut ratio = 100i32;
+    solver.run(&mut dist, &mut ratio);
+    assert_eq!(ratio, 1);
+}
+
+#[test]
+fn test_disconnected_graph() {
+    let mut graph: HashMap<i32, HashMap<i32, f64>> = HashMap::new();
+    graph.insert(0, [(1, 1.0)].into());
+    graph.insert(1, HashMap::new());
+    graph.insert(2, HashMap::new());
+
+    let mut ncf = NegCycleFinder::new(&graph);
+    let mut dist: HashMap<i32, f64> = [(0, 0.0), (1, 0.0), (2, 0.0)].into();
+    let result = ncf.howard(&mut dist, |w| *w);
+    assert!(result.is_none());
+}
+
+#[test]
+fn test_complex_graph_multiple_components() {
+    let mut graph: HashMap<i32, HashMap<i32, f64>> = HashMap::new();
+    graph.insert(0, [(1, 1.0)].into());
+    graph.insert(1, [(2, 2.0)].into());
+    graph.insert(2, [(3, 3.0)].into());
+    graph.insert(3, HashMap::new());
+
+    let mut ncf = NegCycleFinder::new(&graph);
+    let mut dist: HashMap<i32, f64> = [(0, 0.0), (1, 0.0), (2, 0.0), (3, 0.0)].into();
+    let result = ncf.howard(&mut dist, |w| *w);
+    assert!(result.is_none());
 }

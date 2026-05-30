@@ -1,218 +1,130 @@
-// use std::collections::HashMap;
-// use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::hash::Hash;
 use std::ops::Add;
 use std::ops::Div;
-use std::ops::Mul;
-use std::ops::Neg;
-use std::ops::Sub;
 
-use petgraph::graph::{DiGraph, EdgeReference};
-// use petgraph::prelude::*;
-// use petgraph::visit::EdgeRef;
-// use petgraph::visit::IntoNodeIdentifiers;
-// use petgraph::Direction;
+use crate::Graph;
+use crate::NegCycleFinder;
+use crate::Zero;
 
-// use num::traits::Float;
-use num::traits::Inv;
-use num::traits::One;
-use num::traits::Zero;
-
-use crate::neg_cycle::NegCycleFinder;
-
-/// The `ParametricAPI` trait defines two methods: `distance` and `zero_cancel`.
+/// Interface for parametric network problems.
+///
+/// Implementations provide:
+/// - `distance(ratio, weight)` — computes the effective edge distance given
+///   a parameter `ratio` and the stored edge weight.
+/// - `zero_cancel(cycle)` — given a cycle (list of edge weights), computes
+///   the ratio value that would make the cycle's total distance zero.
 ///
 /// # Example
+///
 /// ```rust
-/// use petgraph::graph::EdgeReference;
 /// use digraphx_rs::parametric::ParametricAPI;
-/// use num::rational::Ratio;
 ///
 /// struct MyAPI;
 ///
-/// impl<V> ParametricAPI<V, Ratio<i32>> for MyAPI
-/// where
-///     V: Eq + Clone + std::hash::Hash,
-/// {
-///     fn distance(&self, ratio: &Ratio<i32>, _edge: &EdgeReference<Ratio<i32>>) -> Ratio<i32> {
-///         *ratio
+/// impl ParametricAPI<i32> for MyAPI {
+///     fn distance(&self, ratio: &i32, weight: &i32) -> i32 {
+///         *weight - *ratio
 ///     }
-///
-///     fn zero_cancel(&self, _cycle: &[EdgeReference<Ratio<i32>>]) -> Ratio<i32> {
-///         Ratio::new(0, 1)
+///     fn zero_cancel(&self, cycle: &[i32]) -> i32 {
+///         let s: i32 = cycle.iter().sum();
+///         s / cycle.len() as i32
 ///     }
 /// }
 /// ```
-pub trait ParametricAPI<E, R>
-where
-    R: Copy + PartialOrd,
-    E: Clone,
-{
-    fn distance(&self, ratio: &R, edge: &EdgeReference<R>) -> R;
-    fn zero_cancel(&self, cycle: &[EdgeReference<R>]) -> R;
+pub trait ParametricAPI<W> {
+    /// Compute the effective edge distance given the current ratio.
+    fn distance(&self, ratio: &W, weight: &W) -> W;
+
+    /// Compute the ratio that makes the cycle's total distance zero.
+    fn zero_cancel(&self, cycle: &[W]) -> W;
 }
 
-/// The `MaxParametricSolver` struct is a generic type that takes in parameters `V`, `R`, and `P` and
-/// contains a `NegCycleFinder` and `omega` of type `P`.
+/// Maximum parametric solver.
 ///
-/// Properties:
+/// Solves the parametric network problem:
 ///
-/// * `ncf`: NegCycleFinder is a struct that is used to find negative cycles in a graph. It takes three
-///   type parameters: 'a, V, and R. 'a represents the lifetime of the struct, V represents the type of
-///   the vertices in the graph, and R represents the type of the weights or
-/// * `omega`: The `omega` property is of type `P`, which is a generic type parameter that implements
-///   the `ParametricAPI` trait. This trait is not defined in the code snippet you provided, so it is
-///   likely defined elsewhere in the codebase.
-#[derive(Debug)]
-pub struct MaxParametricSolver<'a, V, R, P>
-where
-    R: Copy
-        + PartialOrd
-        + Add<Output = R>
-        + Sub<Output = R>
-        + Mul<Output = R>
-        + Div<Output = R>
-        + Neg<Output = R>
-        + Inv<Output = R>,
-    V: Eq + Hash + Clone,
-    P: ParametricAPI<V, R>,
-{
-    ncf: NegCycleFinder<'a, V, R>,
+/// ```text
+/// max  r
+/// s.t. dist[v] - dist[u] ≤ distance(edge, r)  ∀ edge(u,v) ∈ G
+/// ```
+///
+/// Generic over any graph type `G` implementing [`Graph`].
+///
+/// # Example
+///
+/// ```rust
+/// use std::collections::HashMap;
+/// use digraphx_rs::{Graph, graph_from_edges};
+/// use digraphx_rs::parametric::{MaxParametricSolver, ParametricAPI};
+///
+/// struct MinCycle;
+///
+/// impl ParametricAPI<i32> for MinCycle {
+///     fn distance(&self, r: &i32, w: &i32) -> i32 { *w - *r }
+///     fn zero_cancel(&self, cycle: &[i32]) -> i32 {
+///         cycle.iter().sum::<i32>() / cycle.len() as i32
+///     }
+/// }
+///
+/// let graph = graph_from_edges(&[
+///     (0, 1, 5i32), (0, 2, 1),
+///     (1, 0, 1), (1, 2, 1),
+///     (2, 1, 1), (2, 0, 1),
+/// ]);
+/// let mut solver = MaxParametricSolver::new(&graph, MinCycle);
+/// let mut dist: HashMap<i32, i32> = [(0, 0), (1, 0), (2, 0)].into();
+/// let mut ratio = 100i32;
+/// solver.run(&mut dist, &mut ratio);
+/// assert_eq!(ratio, 1);
+/// ```
+pub struct MaxParametricSolver<'a, G: Graph, P> {
+    ncf: NegCycleFinder<'a, G>,
     omega: P,
 }
 
-impl<'a, V, R, P> MaxParametricSolver<'a, V, R, P>
+impl<'a, G, P> MaxParametricSolver<'a, G, P>
 where
-    R: Copy
-        + PartialOrd
-        + Zero
-        + One
-        + Add<Output = R>
-        + Sub<Output = R>
-        + Mul<Output = R>
-        + Div<Output = R>
-        + Neg<Output = R>
-        + Inv<Output = R>,
-    V: Eq + Hash + Clone,
-    P: ParametricAPI<V, R>,
+    G: Graph,
+    G::Weight: Add<Output = G::Weight> + PartialOrd + Copy + Div<Output = G::Weight> + Zero,
+    G::Node: Copy + Eq + Hash,
+    P: ParametricAPI<G::Weight>,
 {
-    /// The function creates a new instance of a struct with a given directed graph and a value.
-    ///
-    /// Arguments:
-    ///
-    /// * `grph`: The `grph` parameter is a reference to a directed graph (`DiGraph`) with vertices of
-    ///   type `V` and edges of type `R`.
-    /// * `omega`: The `omega` parameter is of type `P`. It represents some value or parameter that is
-    ///   used in the implementation of the `new` function. The specific meaning or purpose of `omega`
-    ///   would depend on the context and the code that uses this function.
-    ///
-    /// Returns:
-    ///
-    /// The `new` function is returning an instance of the struct that it is defined in.
-    ///
-    /// # Example
-    /// ```rust
-    /// use petgraph::prelude::*;
-    /// use digraphx_rs::parametric::{MaxParametricSolver, ParametricAPI};
-    /// use petgraph::graph::{EdgeReference, DiGraph};
-    /// use num::rational::Ratio;
-    /// use num::traits::{Zero, One, Inv};
-    /// use std::ops::{Add, Sub, Mul, Div, Neg};
-    ///
-    /// #[derive(Debug)]
-    /// struct MyOmega;
-    ///
-    /// impl<V> ParametricAPI<V, Ratio<i32>> for MyOmega
-    /// where
-    ///     V: Eq + Clone,
-    /// {
-    ///     fn distance(&self, ratio: &Ratio<i32>, edge: &EdgeReference<Ratio<i32>>) -> Ratio<i32> {
-    ///         *edge.weight() - *ratio
-    ///     }
-    ///
-    ///     fn zero_cancel(&self, cycle: &[EdgeReference<Ratio<i32>>]) -> Ratio<i32> {
-    ///         let total_weight: Ratio<i32> = cycle.iter().map(|e| *e.weight()).sum();
-    ///         total_weight / Ratio::from_integer(cycle.len() as i32)
-    ///     }
-    /// }
-    ///
-    /// let digraph = DiGraph::<(), Ratio<i32>>::new();
-    /// let solver = MaxParametricSolver::new(&digraph, MyOmega);
-    /// ```
-    pub fn new(grph: &'a DiGraph<V, R>, omega: P) -> Self {
-        Self {
-            ncf: NegCycleFinder::new(grph),
+    /// Create a new solver.
+    pub fn new(graph: &'a G, omega: P) -> Self {
+        MaxParametricSolver {
+            ncf: NegCycleFinder::new(graph),
             omega,
         }
     }
 
-    /// The function `run` finds the minimum ratio and corresponding cycle in a given graph.
+    /// Run the parametric solver.
     ///
-    /// Arguments:
-    ///
-    /// * `dist`: `dist` is a mutable reference to a slice of type `R`. It represents a distance matrix
-    ///   or array, where `R` is the type of the elements in the matrix.
-    /// * `ratio`: The `ratio` parameter is a mutable reference to a value of type `R`. It represents
-    ///   the current ratio value that is being used in the algorithm. The algorithm will update this
-    ///   value if it finds a smaller ratio during its execution.
-    ///
-    /// Returns:
-    ///
-    /// a vector of `EdgeReference<R>`.
-    ///
-    /// # Complexity
-    ///
-    /// - **Time**: O(k * (V + E)) where k is number of iterations until convergence, V is vertices, E is edges
-    /// - **Space**: O(V) for distance array and cycle storage
-    ///
-    /// # Example
-    /// ```rust
-    /// use petgraph::prelude::*;
-    /// use digraphx_rs::parametric::{MaxParametricSolver, ParametricAPI};
-    /// use petgraph::graph::{EdgeReference, DiGraph};
-    /// use num::rational::Ratio;
-    /// use num::traits::{Zero, One, Inv};
-    /// use std::ops::{Add, Sub, Mul, Div, Neg};
-    ///
-    /// #[derive(Debug)]
-    /// struct MyOmega;
-    ///
-    /// impl<V> ParametricAPI<V, Ratio<i32>> for MyOmega
-    /// where
-    ///     V: Eq + Clone,
-    /// {
-    ///     fn distance(&self, ratio: &Ratio<i32>, edge: &EdgeReference<Ratio<i32>>) -> Ratio<i32> {
-    ///         *edge.weight() - *ratio
-    ///     }
-    ///
-    ///     fn zero_cancel(&self, cycle: &[EdgeReference<Ratio<i32>>]) -> Ratio<i32> {
-    ///         let total_weight: Ratio<i32> = cycle.iter().map(|e| *e.weight()).sum();
-    ///         total_weight / Ratio::from_integer(cycle.len() as i32)
-    ///     }
-    /// }
-    ///
-    /// let digraph = DiGraph::<(), Ratio<i32>>::from_edges([
-    ///     (0, 1, Ratio::new(1, 1)),
-    ///     (1, 2, Ratio::new(1, 1)),
-    ///     (2, 0, Ratio::new(1, 1)),
-    /// ]);
-    /// let mut solver = MaxParametricSolver::new(&digraph, MyOmega);
-    /// let mut dist = [Ratio::new(0, 1), Ratio::new(0, 1), Ratio::new(0, 1)];
-    /// let mut ratio = Ratio::new(100, 1);
-    /// let cycle = solver.run(&mut dist, &mut ratio);
-    /// // The function returns a cycle if found
-    /// ```
-    pub fn run(&mut self, dist: &mut [R], ratio: &mut R) -> Vec<EdgeReference<'a, R>> {
-        let mut cycle = Vec::<EdgeReference<R>>::new();
+    /// Updates `ratio` in place to the maximum feasible value and returns
+    /// the critical cycle (the cycle that determines the optimal ratio).
+    /// Returns an empty vector if no cycle was necessary.
+    pub fn run(
+        &mut self,
+        dist: &mut HashMap<G::Node, G::Weight>,
+        ratio: &mut G::Weight,
+    ) -> Vec<G::Weight> {
+        let mut cycle = Vec::new();
+
         loop {
-            for d in dist.iter_mut() {
-                *d = R::zero();
+            // Reset distances to zero
+            for d in dist.values_mut() {
+                *d = G::Weight::zero();
             }
-            if let Some(ci) = self.ncf.howard(dist, |e| self.omega.distance(ratio, &e)) {
+            // Create fresh finder to reset predecessor map
+            let graph = self.ncf.graph();
+            self.ncf = NegCycleFinder::new(graph);
+
+            let get_weight = |w: &G::Weight| self.omega.distance(ratio, w);
+            if let Some(ci) = self.ncf.howard(dist, get_weight) {
                 let ri = self.omega.zero_cancel(&ci);
-                if *ratio > ri {
-                    *ratio = ri;
+                if ri < *ratio {
                     cycle = ci;
+                    *ratio = ri;
                     continue;
                 }
             }
@@ -225,82 +137,55 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graph_from_edges;
 
-    use num::rational::Ratio;
+    struct MinCycleRatio;
 
-    #[derive(Debug)]
-    struct MyRatio {}
-
-    impl<V, R> ParametricAPI<V, R> for MyRatio
-    where
-        R: Copy
-            + PartialOrd
-            + Add<Output = R>
-            + Sub<Output = R>
-            + Mul<Output = R>
-            + Div<Output = R>
-            + Neg<Output = R>
-            + Inv<Output = R>
-            + Zero
-            + One
-            + From<i32>,
-        V: Eq + Hash + Clone,
-    {
-        fn distance(&self, ratio: &R, edge: &EdgeReference<R>) -> R {
-            *edge.weight() - *ratio
+    impl ParametricAPI<i32> for MinCycleRatio {
+        fn distance(&self, r: &i32, w: &i32) -> i32 {
+            *w - *r
         }
-
-        fn zero_cancel(&self, cycle: &[EdgeReference<R>]) -> R {
-            let mut total_weight = R::zero();
-            for edge in cycle {
-                total_weight = total_weight + *edge.weight();
-            }
-            total_weight / R::from(cycle.len() as i32)
+        fn zero_cancel(&self, cycle: &[i32]) -> i32 {
+            cycle.iter().sum::<i32>() / cycle.len() as i32
         }
     }
 
     #[test]
-    fn test_parametric_solver_simple() {
-        let digraph = DiGraph::<(), Ratio<i32>>::from_edges([
-            (0, 1, Ratio::new(1, 1)),
-            (1, 2, Ratio::new(1, 1)),
-            (2, 0, Ratio::new(1, 1)),
+    fn test_parametric_simple() {
+        let graph = graph_from_edges(&[
+            (0, 1, 5i32),
+            (0, 2, 1),
+            (1, 0, 1),
+            (1, 2, 1),
+            (2, 1, 1),
+            (2, 0, 1),
         ]);
-
-        let mut solver = MaxParametricSolver::new(&digraph, MyRatio {});
-        let mut dist = [Ratio::new(0, 1), Ratio::new(0, 1), Ratio::new(0, 1)];
-        let mut ratio = Ratio::new(1_000_000, 1);
+        let mut solver = MaxParametricSolver::new(&graph, MinCycleRatio);
+        let mut dist: HashMap<i32, i32> = [(0, 0), (1, 0), (2, 0)].into();
+        let mut ratio = 100i32;
         solver.run(&mut dist, &mut ratio);
-
-        assert_eq!(ratio, Ratio::new(1, 1));
+        assert_eq!(ratio, 1);
     }
 
     #[test]
-    fn test_parametric_solver_negative_cycle() {
-        let digraph = DiGraph::<(), Ratio<i32>>::from_edges([
-            (0, 1, Ratio::new(1, 1)),
-            (1, 2, Ratio::new(-5, 1)),
-            (2, 0, Ratio::new(1, 1)),
-        ]);
-
-        let mut solver = MaxParametricSolver::new(&digraph, MyRatio {});
-        let mut dist = [Ratio::new(0, 1), Ratio::new(0, 1), Ratio::new(0, 1)];
-        let mut ratio = Ratio::new(1_000_000, 1);
+    fn test_parametric_negative_cycle() {
+        // Edge weights: [1, 1, -3] → cycle sum = -1, zero_cancel = -1/3 = 0 (i32)
+        let graph = graph_from_edges(&[(0, 1, 1i32), (1, 2, 1), (2, 0, -3)]);
+        let mut solver = MaxParametricSolver::new(&graph, MinCycleRatio);
+        let mut dist: HashMap<i32, i32> = [(0, 0), (1, 0), (2, 0)].into();
+        let mut ratio = 100i32;
         solver.run(&mut dist, &mut ratio);
-
-        assert_eq!(ratio, Ratio::new(-1, 1));
+        // -1/3 truncates to 0 in integer arithmetic
+        assert_eq!(ratio, 0);
     }
 
     #[test]
-    fn test_parametric_solver_no_cycle() {
-        let digraph = DiGraph::<(), Ratio<i32>>::from_edges([(0, 1, Ratio::new(1, 1))]);
-
-        let mut solver = MaxParametricSolver::new(&digraph, MyRatio {});
-        let mut dist = [Ratio::new(0, 1), Ratio::new(0, 1)];
-        let mut ratio = Ratio::new(1_000_000, 1);
-        let cycle = solver.run(&mut dist, &mut ratio);
-
-        assert_eq!(ratio, Ratio::new(1_000_000, 1));
-        assert!(cycle.is_empty());
+    fn test_parametric_no_cycle() {
+        let graph = graph_from_edges(&[(0, 1, 1i32)]);
+        let mut solver = MaxParametricSolver::new(&graph, MinCycleRatio);
+        let mut dist: HashMap<i32, i32> = [(0, 0), (1, 0)].into();
+        let mut ratio = 100i32;
+        solver.run(&mut dist, &mut ratio);
+        assert_eq!(ratio, 100);
     }
 }
