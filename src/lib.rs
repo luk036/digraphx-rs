@@ -491,11 +491,7 @@ mod tests {
 
     #[test]
     fn test_graph_map_adapter_neg_cycle() {
-        let adj: Vec<Vec<(usize, i32)>> = vec![
-            vec![(1, 1)],
-            vec![(2, 1)],
-            vec![(0, -3)],
-        ];
+        let adj: Vec<Vec<(usize, i32)>> = vec![vec![(1, 1)], vec![(2, 1)], vec![(0, -3)]];
         let g = MapAdapter::new(adj);
         let mut ncf = NegCycleFinder::new(&g);
         let mut dist: HashMap<usize, i32> = [(0, 0), (1, 0), (2, 0)].into();
