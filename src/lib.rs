@@ -28,6 +28,7 @@
 //! assert!(cycle.is_some());
 //! ```
 
+pub mod map_adapter;
 pub mod neg_cycle;
 pub mod parametric;
 
@@ -39,6 +40,9 @@ pub mod prelude;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::ops::Add;
+use std::ops::Range;
+
+use crate::map_adapter::MapAdapter;
 
 // ---------------------------------------------------------------------------
 // Graph trait — the graph as a container of containers
@@ -171,6 +175,106 @@ where
                 .map(|(&k, &v)| (k, v))
                 .collect::<Vec<_>>()
                 .into_iter(),
+            None => Vec::new().into_iter(),
+        }
+    }
+
+    fn num_nodes(&self) -> usize {
+        self.len()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Array-based graph representations (nodes are `usize` indices)
+// ---------------------------------------------------------------------------
+
+/// Create an array-based graph from a slice of edges (node, neighbor, weight)
+/// triples.  Returns a `Vec<Vec<(usize, W)>>` adjacency list.
+///
+/// This is the array-based equivalent of [`graph_from_edges`], matching the
+/// `vector<vector<pair<size_t, W>>>` convention used in the C++ digraphx-cpp.
+///
+/// ```rust
+/// use digraphx_rs::{Graph, graph_from_edges_array};
+///
+/// let g = graph_from_edges_array(&[(0, 1, 1), (1, 2, 2), (2, 0, -3)]);
+/// assert_eq!(g.num_nodes(), 3);
+/// ```
+pub fn graph_from_edges_array<W>(edges: &[(usize, usize, W)]) -> Vec<Vec<(usize, W)>>
+where
+    W: Copy,
+{
+    if edges.is_empty() {
+        return Vec::new();
+    }
+    let max_node = edges.iter().map(|&(u, v, _)| u.max(v)).max().unwrap_or(0);
+    let mut g: Vec<Vec<(usize, W)>> = (0..=max_node).map(|_| Vec::new()).collect();
+    for &(u, v, w) in edges {
+        g[u].push((v, w));
+        // Ensure v exists if it doesn't yet have outgoing edges
+        if v > max_node {
+            g.resize(v + 1, Vec::new());
+        }
+    }
+    g
+}
+
+// --- Vec<Vec<(usize, W)>> --------------------------------------------------
+//
+// Standard adjacency list: the outer index is the source node, and each inner
+// vector stores (neighbor, weight) pairs.  Matches the C++ convention of
+// `vector<vector<pair<size_t, W>>>` wrapped by `MapAdapter`.
+
+#[allow(clippy::unnecessary_to_owned)]
+impl<W> Graph for Vec<Vec<(usize, W)>>
+where
+    W: Copy + Add<Output = W> + PartialOrd,
+{
+    type Node = usize;
+    type Weight = W;
+    type Nodes = Range<usize>;
+    type Neighbors = std::vec::IntoIter<(usize, W)>;
+
+    fn nodes(&self) -> Self::Nodes {
+        0..self.len()
+    }
+
+    fn neighbors(&self, node: usize) -> Self::Neighbors {
+        match self.get(node) {
+            Some(nbrs) => nbrs.to_vec().into_iter(),
+            None => Vec::new().into_iter(),
+        }
+    }
+
+    fn num_nodes(&self) -> usize {
+        self.len()
+    }
+}
+
+// --- MapAdapter<Vec<(usize, W)>> -------------------------------------------
+//
+// Same adjacency-list layout but with the outer Vec wrapped in a MapAdapter.
+// This mirrors the C++ pattern where `MapAdapter<vector<vector<pair<K,V>>>>`
+// provides the graph interface.  Here `MapAdapter<Vec<(usize, W)>>` stores
+// the adjacency list in its inner Vec (`lst: Vec<Vec<(usize, W)>>`).
+
+#[allow(clippy::unnecessary_to_owned)]
+impl<W> Graph for MapAdapter<Vec<(usize, W)>>
+where
+    W: Copy + Add<Output = W> + PartialOrd,
+{
+    type Node = usize;
+    type Weight = W;
+    type Nodes = Range<usize>;
+    type Neighbors = std::vec::IntoIter<(usize, W)>;
+
+    fn nodes(&self) -> Self::Nodes {
+        0..self.len()
+    }
+
+    fn neighbors(&self, node: usize) -> Self::Neighbors {
+        match self.lst.get(node) {
+            Some(nbrs) => nbrs.to_vec().into_iter(),
             None => Vec::new().into_iter(),
         }
     }
@@ -333,5 +437,83 @@ mod tests {
         assert_eq!(g.num_nodes(), 0);
         assert!(g.nodes().collect::<Vec<_>>().is_empty());
         assert!(g.neighbors(0).collect::<Vec<_>>().is_empty());
+    }
+
+    // --- Array-based graph tests ---
+
+    #[test]
+    fn test_graph_vec_vec_nodes() {
+        let g: Vec<Vec<(usize, i32)>> = vec![vec![(1, 1)], vec![(0, 2)]];
+        let nodes: Vec<_> = g.nodes().collect();
+        assert_eq!(nodes, vec![0, 1]);
+    }
+
+    #[test]
+    fn test_graph_vec_vec_neighbors() {
+        let g: Vec<Vec<(usize, i32)>> = vec![vec![(1, 5)]];
+        let nbrs: Vec<_> = g.neighbors(0).collect();
+        assert_eq!(nbrs, vec![(1, 5)]);
+    }
+
+    #[test]
+    fn test_graph_vec_vec_empty() {
+        let g: Vec<Vec<(usize, f64)>> = vec![];
+        assert_eq!(g.num_nodes(), 0);
+        assert!(g.nodes().collect::<Vec<_>>().is_empty());
+    }
+
+    #[test]
+    fn test_graph_vec_vec_neg_cycle() {
+        let g = graph_from_edges_array(&[(0, 1, 1i32), (1, 2, 1), (2, 0, -3)]);
+        let mut ncf = NegCycleFinder::new(&g);
+        let mut dist: HashMap<usize, i32> = [(0, 0), (1, 0), (2, 0)].into();
+        let result = ncf.howard(&mut dist, |w| *w);
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_graph_vec_vec_no_neg_cycle() {
+        let g = graph_from_edges_array(&[(0, 1, 1i32), (1, 0, 1)]);
+        let mut ncf = NegCycleFinder::new(&g);
+        let mut dist: HashMap<usize, i32> = [(0, 0), (1, 0)].into();
+        let result = ncf.howard(&mut dist, |w| *w);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_graph_map_adapter_vec() {
+        let adj: Vec<Vec<(usize, i32)>> = vec![vec![(1, 1), (2, 2)], vec![(2, 3)], vec![(0, -4)]];
+        let g = MapAdapter::new(adj);
+        assert_eq!(g.num_nodes(), 3);
+        let nbrs: Vec<_> = g.neighbors(0).collect();
+        assert_eq!(nbrs, vec![(1, 1), (2, 2)]);
+    }
+
+    #[test]
+    fn test_graph_map_adapter_neg_cycle() {
+        let adj: Vec<Vec<(usize, i32)>> = vec![
+            vec![(1, 1)],
+            vec![(2, 1)],
+            vec![(0, -3)],
+        ];
+        let g = MapAdapter::new(adj);
+        let mut ncf = NegCycleFinder::new(&g);
+        let mut dist: HashMap<usize, i32> = [(0, 0), (1, 0), (2, 0)].into();
+        let result = ncf.howard(&mut dist, |w| *w);
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_graph_from_edges_array_basic() {
+        let g = graph_from_edges_array(&[(0, 1, 1), (1, 2, 2), (2, 0, -3)]);
+        assert_eq!(g.num_nodes(), 3);
+        let nbrs: Vec<_> = g.neighbors(0).collect();
+        assert_eq!(nbrs, vec![(1, 1)]);
+    }
+
+    #[test]
+    fn test_graph_from_edges_array_empty() {
+        let g: Vec<Vec<(usize, i32)>> = graph_from_edges_array(&[]);
+        assert_eq!(g.num_nodes(), 0);
     }
 }
