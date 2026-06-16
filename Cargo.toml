@@ -14,16 +14,16 @@ petgraph = ["dep:petgraph"]
 
 [dependencies]
 num = "0.4.3"
-log = { version = "0.4", optional = true }
-env_logger = { version = "0.11", optional = true }
+log = { version = "0.4.30", optional = true }
+env_logger = { version = "0.11.10", optional = true }
 
 [dependencies.petgraph]
-version = "0.8.2"
+version = "0.8.3"
 features = ["serde-1"]
 optional = true
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8.2", features = ["html_reports"] }
 quickcheck = "1.0"
 
 [[bench]]
