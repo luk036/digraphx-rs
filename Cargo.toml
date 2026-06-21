@@ -24,7 +24,6 @@ optional = true
 
 [dev-dependencies]
 criterion = { version = "0.8.2", features = ["html_reports"] }
-quickcheck = "1.0"
 
 [[bench]]
 name = "algorithms"

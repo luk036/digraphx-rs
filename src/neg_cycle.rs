@@ -54,9 +54,11 @@ where
 
     /// Perform one Bellman–Ford relaxation pass.
     ///
-    /// For each edge (u, v) in the graph, checks whether
-    /// `dist[v] > dist[u] + weight(u,v)` and updates the predecessor
-    /// map if so.  Returns `true` if any distance was changed.
+    /// For each edge $(u, v)$ in the graph, checks the triangle inequality:
+    ///
+    /// $$ d\[v\] > d\[u\] + w(u,v) $$
+    ///
+    /// and updates the predecessor map if so. Returns `true` if any distance was changed.
     pub fn relax<F>(&mut self, dist: &mut HashMap<G::Node, G::Weight>, get_weight: &F) -> bool
     where
         F: Fn(&G::Weight) -> G::Weight,
@@ -225,8 +227,11 @@ where
 
     /// Predecessor relaxation (Bellman–Ford style) with constraint.
     ///
-    /// For each edge `(u, v)`, updates `dist[v]` when
-    /// `dist[v] > dist[u] + weight(u,v)` AND `update_ok(old, new)` is `true`.
+    /// For each edge $(u, v)$, updates $d\[v\]$ when:
+    ///
+    /// $$ d\[v\] > d\[u\] + w(u,v) $$
+    ///
+    /// AND $\text{update\_ok}(d_{\text{old}}, d_{\text{new}})$ is `true`.
     pub fn relax_pred<F, U>(
         &mut self,
         dist: &mut HashMap<G::Node, G::Weight>,
@@ -255,8 +260,11 @@ where
 
     /// Successor relaxation (reverse Bellman–Ford style) with constraint.
     ///
-    /// For each edge `(u, v)`, updates `dist[u]` when
-    /// `dist[u] < dist[v] - weight(u,v)` AND `update_ok(old, new)` is `true`.
+    /// For each edge $(u, v)$, updates $d\[u\]$ when:
+    ///
+    /// $$ d\[u\] < d\[v\] - w(u,v) $$
+    ///
+    /// AND $\text{update\_ok}(d_{\text{old}}, d_{\text{new}})$ is `true`.
     pub fn relax_succ<F, U>(
         &mut self,
         dist: &mut HashMap<G::Node, G::Weight>,
@@ -302,6 +310,10 @@ where
     }
 
     /// Check whether the cycle starting at `handle` is negative.
+    ///
+    /// A cycle is negative if for any edge $(u,v)$ on the cycle:
+    ///
+    /// $$ d\[v\] > d\[u\] + w(u,v) $$
     pub fn is_negative<F>(
         &self,
         handle: G::Node,

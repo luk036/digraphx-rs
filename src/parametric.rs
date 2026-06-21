@@ -33,10 +33,14 @@ use crate::Zero;
 /// }
 /// ```
 pub trait ParametricAPI<W> {
-    /// Compute the effective edge distance given the current ratio.
+    /// Compute the effective edge distance given the current ratio $r$.
+    ///
+    /// $$ d'(w, r) = \text{distance}(w, r) $$
     fn distance(&self, ratio: &W, weight: &W) -> W;
 
-    /// Compute the ratio that makes the cycle's total distance zero.
+    /// Compute the ratio $r^*$ that makes the cycle's total distance zero.
+    ///
+    /// $$ \sum_{(u,v) \in C} \text{distance}(w_{uv}, r^*) = 0 $$
     fn zero_cancel(&self, cycle: &[W]) -> W;
 }
 
@@ -44,10 +48,11 @@ pub trait ParametricAPI<W> {
 ///
 /// Solves the parametric network problem:
 ///
-/// ```text
-/// max  r
-/// s.t. dist[v] - dist[u] ≤ distance(edge, r)  ∀ edge(u,v) ∈ G
-/// ```
+/// $$ \max\; r $$
+///
+/// subject to:
+///
+/// $$ d\[v\] - d\[u\] \le \text{distance}(w_{uv}, r) \qquad \forall (u,v) \in E $$
 ///
 /// Generic over any graph type `G` implementing [`Graph`].
 ///
