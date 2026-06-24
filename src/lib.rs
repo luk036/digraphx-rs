@@ -30,6 +30,7 @@
 
 pub mod map_adapter;
 pub mod neg_cycle;
+pub mod neg_cycle_q;
 pub mod parametric;
 
 #[cfg(feature = "std")]
@@ -396,7 +397,7 @@ impl<T: num::Integer + Clone> Zero for num::rational::Ratio<T> {
 // ---------------------------------------------------------------------------
 
 pub use neg_cycle::NegCycleFinder;
-pub use neg_cycle::NegCycleFinderQ;
+pub use neg_cycle_q::NegCycleFinderQ;
 pub use parametric::{MaxParametricSolver, ParametricAPI};
 
 /// Cycle type: a sequence of node IDs.
