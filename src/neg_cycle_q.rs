@@ -8,7 +8,7 @@
 //! - Support for distance update constraints via [`update_ok`] callbacks
 //! - Both predecessor-based and successor-based algorithms
 //! - Flexible constraint handling for complex optimization problems
-//! - Node-pair based weight functions for parametric algorithms
+//! - Node-pair cycle output for parametric algorithms
 //!
 //! # Example
 //!
@@ -39,7 +39,7 @@ use crate::Zero;
 /// - **Predecessor-based** Howard (`howard_pred`) — traditional Bellman–Ford
 /// - **Successor-based** Howard (`howard_succ`) — reverse relaxation
 /// - An **`update_ok`** callback that gates distance updates
-/// - **Node-pair** weight methods for parametric algorithms
+/// - **Node-pair** cycle output for parametric algorithms
 ///
 /// Generic over any graph type `G` that implements [`Graph`].
 ///
@@ -182,78 +182,6 @@ where
     }
 
     // ------------------------------------------------------------------
-    // Predecessor relaxation (node-pair weight)
-    // ------------------------------------------------------------------
-
-    /// Predecessor relaxation using a node-pair weight function.
-    ///
-    /// Like [`relax_pred`](Self::relax_pred) but the weight is computed from the
-    /// node pair $(u, v)$ rather than from the stored edge data.  The edge data
-    /// is still stored in the predecessor map for cycle reconstruction.
-    ///
-    /// The `get_weight` closure receives the edge as `(G::Node, G::Node)`.
-    pub fn relax_node_pairs_pred<F, U>(
-        &mut self,
-        dist: &mut HashMap<G::Node, G::Weight>,
-        get_weight: &F,
-        update_ok: &U,
-    ) -> bool
-    where
-        F: Fn((G::Node, G::Node)) -> G::Weight,
-        U: Fn(&G::Weight, &G::Weight) -> bool,
-    {
-        let mut changed = false;
-        for u in self.graph.nodes() {
-            let du = *dist.get(&u).unwrap_or(&G::Weight::zero());
-            for (v, w) in self.graph.neighbors(u) {
-                let distance = du + get_weight((u, v));
-                let dv = *dist.get(&v).unwrap_or(&G::Weight::zero());
-                if dv > distance && update_ok(&dv, &distance) {
-                    dist.insert(v, distance);
-                    self.pred.insert(v, (u, w));
-                    changed = true;
-                }
-            }
-        }
-        changed
-    }
-
-    // ------------------------------------------------------------------
-    // Successor relaxation (node-pair weight)
-    // ------------------------------------------------------------------
-
-    /// Successor relaxation using a node-pair weight function.
-    ///
-    /// Like [`relax_succ`](Self::relax_succ) but the weight is computed from the
-    /// node pair $(u, v)$ rather than from the stored edge data.
-    ///
-    /// The `get_weight` closure receives the edge as `(G::Node, G::Node)`.
-    pub fn relax_node_pairs_succ<F, U>(
-        &mut self,
-        dist: &mut HashMap<G::Node, G::Weight>,
-        get_weight: &F,
-        update_ok: &U,
-    ) -> bool
-    where
-        F: Fn((G::Node, G::Node)) -> G::Weight,
-        U: Fn(&G::Weight, &G::Weight) -> bool,
-    {
-        let mut changed = false;
-        for u in self.graph.nodes() {
-            let du = *dist.get(&u).unwrap_or(&G::Weight::zero());
-            for (v, w) in self.graph.neighbors(u) {
-                let distance = *dist.get(&v).unwrap_or(&G::Weight::zero()) - get_weight((u, v));
-                if du < distance && update_ok(&du, &distance) {
-                    dist.insert(u, distance);
-                    self.succ.insert(u, (v, w));
-                    changed = true;
-                }
-            }
-        }
-        changed
-    }
-
-    // ------------------------------------------------------------------
     // Cycle reconstruction
     // ------------------------------------------------------------------
 
@@ -302,35 +230,6 @@ where
             let dv = *dist.get(&vtx).unwrap_or(&G::Weight::zero());
             let du = *dist.get(&u).unwrap_or(&G::Weight::zero());
             if dv > du + get_weight(&w) {
-                return true;
-            }
-            vtx = u;
-            if vtx == handle {
-                break;
-            }
-        }
-        false
-    }
-
-    /// Check negativity using a node-pair weight function.
-    ///
-    /// Like [`is_negative`](Self::is_negative) but `get_weight` receives the
-    /// edge as `(G::Node, G::Node)`.
-    pub fn is_negative_node_pairs<F>(
-        &self,
-        handle: G::Node,
-        dist: &HashMap<G::Node, G::Weight>,
-        get_weight: &F,
-    ) -> bool
-    where
-        F: Fn((G::Node, G::Node)) -> G::Weight,
-    {
-        let mut vtx = handle;
-        loop {
-            let &(u, _w) = self.pred.get(&vtx).unwrap();
-            let dv = *dist.get(&vtx).unwrap_or(&G::Weight::zero());
-            let du = *dist.get(&u).unwrap_or(&G::Weight::zero());
-            if dv > du + get_weight((u, vtx)) {
                 return true;
             }
             vtx = u;
@@ -430,8 +329,7 @@ where
     /// Find one negative cycle (predecessor) returning node-pair edges.
     ///
     /// The `get_weight` closure receives a reference to the stored edge data.
-    /// Use [`find_neg_cycle_pred_np`](Self::find_neg_cycle_pred_np) when the
-    /// weight must be computed from the node pair.
+    /// Returns the cycle as a `Vec` of `(Node, Node)` edges, or `None`.
     pub fn find_neg_cycle_pred<F, U>(
         &mut self,
         dist: &mut HashMap<G::Node, G::Weight>,
@@ -459,8 +357,7 @@ where
     /// Find one negative cycle (successor) returning node-pair edges.
     ///
     /// The `get_weight` closure receives a reference to the stored edge data.
-    /// Use [`find_neg_cycle_succ_np`](Self::find_neg_cycle_succ_np) when the
-    /// weight must be computed from the node pair.
+    /// Returns the cycle as a `Vec` of `(Node, Node)` edges, or `None`.
     pub fn find_neg_cycle_succ<F, U>(
         &mut self,
         dist: &mut HashMap<G::Node, G::Weight>,
@@ -473,66 +370,6 @@ where
     {
         self.succ.clear();
         while self.relax_succ(dist, &get_weight, &update_ok) {
-            if let Some(vtx) = self.find_cycle(&self.succ) {
-                return Some(self.cycle_list_node_pairs(vtx, &self.succ));
-            }
-        }
-        None
-    }
-
-    // ------------------------------------------------------------------
-    // find_neg_cycle_pred_np (node-pair weight) — returns node pairs
-    // ------------------------------------------------------------------
-
-    /// Find one negative cycle (predecessor) with a node-pair weight function.
-    ///
-    /// This is the constrained equivalent of the node-pair weight API in the
-    /// C++ `NegCycleFinderQ::find_neg_cycle_pred`.  The weight is computed
-    /// from the edge endpoints rather than from stored edge data.
-    ///
-    /// Returns the cycle as a `Vec` of `(Node, Node)` edges, or `None`.
-    pub fn find_neg_cycle_pred_np<F, U>(
-        &mut self,
-        dist: &mut HashMap<G::Node, G::Weight>,
-        get_weight: F,
-        update_ok: U,
-    ) -> Option<Vec<(G::Node, G::Node)>>
-    where
-        F: Fn((G::Node, G::Node)) -> G::Weight,
-        U: Fn(&G::Weight, &G::Weight) -> bool,
-    {
-        self.pred.clear();
-        while self.relax_node_pairs_pred(dist, &get_weight, &update_ok) {
-            if let Some(vtx) = self.find_cycle(&self.pred) {
-                debug_assert!(self.is_negative_node_pairs(vtx, dist, &get_weight));
-                return Some(self.cycle_list_node_pairs(vtx, &self.pred));
-            }
-        }
-        None
-    }
-
-    // ------------------------------------------------------------------
-    // find_neg_cycle_succ_np (node-pair weight) — returns node pairs
-    // ------------------------------------------------------------------
-
-    /// Find one negative cycle (successor) with a node-pair weight function.
-    ///
-    /// This is the successor counterpart of
-    /// [`find_neg_cycle_pred_np`](Self::find_neg_cycle_pred_np).
-    ///
-    /// Returns the cycle as a `Vec` of `(Node, Node)` edges, or `None`.
-    pub fn find_neg_cycle_succ_np<F, U>(
-        &mut self,
-        dist: &mut HashMap<G::Node, G::Weight>,
-        get_weight: F,
-        update_ok: U,
-    ) -> Option<Vec<(G::Node, G::Node)>>
-    where
-        F: Fn((G::Node, G::Node)) -> G::Weight,
-        U: Fn(&G::Weight, &G::Weight) -> bool,
-    {
-        self.succ.clear();
-        while self.relax_node_pairs_succ(dist, &get_weight, &update_ok) {
             if let Some(vtx) = self.find_cycle(&self.succ) {
                 return Some(self.cycle_list_node_pairs(vtx, &self.succ));
             }
@@ -633,9 +470,8 @@ mod tests {
         let result = ncfq.find_neg_cycle_pred(&mut dist, |w| *w, |_, _| true);
         assert!(result.is_some());
         let cycle = result.unwrap();
-        // Each element is a (u, v) node pair
         for &(u, v) in &cycle {
-            assert_ne!(u, v); // no self-loop
+            assert_ne!(u, v);
         }
         assert!(cycle.len() >= 2);
     }
@@ -672,6 +508,15 @@ mod tests {
         assert!(result.is_none());
     }
 
+    #[test]
+    fn test_q_find_neg_cycle_pred_no_neg_cycle() {
+        let graph = graph_from_edges(&[(0, 1, 1i32), (1, 2, 1), (2, 0, 1)]);
+        let mut ncfq = NegCycleFinderQ::new(&graph);
+        let mut dist: HashMap<i32, i32> = [(0, 0), (1, 0), (2, 0)].into();
+        let result = ncfq.find_neg_cycle_pred(&mut dist, |w| *w, |_, _| true);
+        assert!(result.is_none());
+    }
+
     // --- empty graph ---
 
     #[test]
@@ -681,149 +526,5 @@ mod tests {
         let mut dist: HashMap<i32, i32> = HashMap::new();
         assert!(ncfq.howard_pred(&mut dist, |w| *w, |_, _| true).is_none());
         assert!(ncfq.howard_succ(&mut dist, |w| *w, |_, _| true).is_none());
-    }
-
-    // ------------------------------------------------------------------
-    // Node-pair weight method tests
-    // ------------------------------------------------------------------
-
-    /// Helper: extract edge weight from a `HashMap`-based graph by node pair.
-    fn make_map_weight<W: Copy>(
-        graph: &HashMap<i32, HashMap<i32, W>>,
-    ) -> impl Fn((i32, i32)) -> W + '_ {
-        move |(u, v): (i32, i32)| {
-            graph
-                .get(&u)
-                .and_then(|nbrs| nbrs.get(&v))
-                .copied()
-                .unwrap_or_else(|| panic!("edge ({}, {}) not found", u, v))
-        }
-    }
-
-    #[test]
-    fn test_q_relax_node_pairs_pred() {
-        // Edge (1, 2) with -1 weight: du + w = 0 + (-1) = -1 < 0 → distance improves
-        let graph = graph_from_edges(&[(1, 2, -1i32)]);
-        let mut ncfq = NegCycleFinderQ::new(&graph);
-        let mut dist: HashMap<i32, i32> = [(0, 0), (1, 0), (2, 0)].into();
-        let get_weight = make_map_weight(&graph);
-        let changed = ncfq.relax_node_pairs_pred(&mut dist, &get_weight, &|_, _| true);
-        assert!(changed);
-        assert_eq!(dist[&2], -1);
-        // Second pass: distances stable
-        let changed2 = ncfq.relax_node_pairs_pred(&mut dist, &get_weight, &|_, _| true);
-        assert!(!changed2);
-    }
-
-    #[test]
-    fn test_q_relax_node_pairs_succ() {
-        // Edge (0, 1) with -7 weight: dist[1] - w = 0 - (-7) = 7 > 0 → dist[0] improves
-        let graph = graph_from_edges(&[(0, 1, -7i32)]);
-        let mut ncfq = NegCycleFinderQ::new(&graph);
-        let mut dist: HashMap<i32, i32> = [(0, 0), (1, 0)].into();
-        let get_weight = make_map_weight(&graph);
-        let changed = ncfq.relax_node_pairs_succ(&mut dist, &get_weight, &|_, _| true);
-        assert!(changed);
-        assert_eq!(dist[&0], 7);
-        // Second pass: distances stable
-        let changed2 = ncfq.relax_node_pairs_succ(&mut dist, &get_weight, &|_, _| true);
-        assert!(!changed2);
-    }
-
-    #[test]
-    fn test_q_find_neg_cycle_pred_np() {
-        let graph = graph_from_edges(&[(0, 1, 1i32), (1, 2, 1), (2, 0, -3)]);
-        let mut ncfq = NegCycleFinderQ::new(&graph);
-        let mut dist: HashMap<i32, i32> = [(0, 0), (1, 0), (2, 0)].into();
-        let get_weight = make_map_weight(&graph);
-        let result = ncfq.find_neg_cycle_pred_np(&mut dist, get_weight, |_, _| true);
-        assert!(result.is_some());
-        let cycle = result.unwrap();
-        for &(u, v) in &cycle {
-            assert_ne!(u, v);
-        }
-        assert!(cycle.len() >= 2);
-    }
-
-    #[test]
-    fn test_q_find_neg_cycle_succ_np() {
-        let graph = graph_from_edges(&[(0, 1, 1i32), (1, 2, 1), (2, 0, -3)]);
-        let mut ncfq = NegCycleFinderQ::new(&graph);
-        let mut dist: HashMap<i32, i32> = [(0, 0), (1, 0), (2, 0)].into();
-        let get_weight = make_map_weight(&graph);
-        let result = ncfq.find_neg_cycle_succ_np(&mut dist, get_weight, |_, _| true);
-        assert!(result.is_some());
-        let cycle = result.unwrap();
-        for &(u, v) in &cycle {
-            assert_ne!(u, v);
-        }
-        assert!(cycle.len() >= 2);
-    }
-
-    #[test]
-    fn test_q_find_neg_cycle_pred_np_no_neg_cycle() {
-        let graph = graph_from_edges(&[(0, 1, 1i32), (1, 2, 1), (2, 0, 1)]);
-        let mut ncfq = NegCycleFinderQ::new(&graph);
-        let mut dist: HashMap<i32, i32> = [(0, 0), (1, 0), (2, 0)].into();
-        let get_weight = make_map_weight(&graph);
-        let result = ncfq.find_neg_cycle_pred_np(&mut dist, get_weight, |_, _| true);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_q_find_neg_cycle_pred_np_blocked() {
-        let graph = graph_from_edges(&[(0, 1, 1i32), (1, 2, 1), (2, 0, -3)]);
-        let mut ncfq = NegCycleFinderQ::new(&graph);
-        let mut dist: HashMap<i32, i32> = [(0, 0), (1, 0), (2, 0)].into();
-        let get_weight = make_map_weight(&graph);
-        let result = ncfq.find_neg_cycle_pred_np(&mut dist, get_weight, |_, _| false);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_q_find_neg_cycle_succ_np_blocked() {
-        let graph = graph_from_edges(&[(0, 1, 1i32), (1, 2, 1), (2, 0, -3)]);
-        let mut ncfq = NegCycleFinderQ::new(&graph);
-        let mut dist: HashMap<i32, i32> = [(0, 0), (1, 0), (2, 0)].into();
-        let get_weight = make_map_weight(&graph);
-        let result = ncfq.find_neg_cycle_succ_np(&mut dist, get_weight, |_, _| false);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_q_is_negative_node_pairs() {
-        let graph = graph_from_edges(&[(0, 1, 1i32), (1, 2, 1), (2, 0, -3)]);
-        let mut ncfq = NegCycleFinderQ::new(&graph);
-        let mut dist: HashMap<i32, i32> = [(0, 0), (1, 0), (2, 0)].into();
-        let get_weight = make_map_weight(&graph);
-
-        // Run howard_pred to populate pred map and find a cycle
-        let result = ncfq.howard_pred(&mut dist, |w| *w, |_, _| true);
-        assert!(result.is_some());
-
-        // Verify is_negative_node_pairs detects the negativity
-        // Find the cycle handle
-        let handle = ncfq
-            .pred
-            .iter()
-            .find_map(|(&v, &(u, _))| {
-                // Look for a node where following pred leads back
-                let mut cur = u;
-                let mut count = 0;
-                while cur != v && count < 10 {
-                    cur = ncfq.pred.get(&cur).map(|&(p, _)| p).unwrap_or(cur);
-                    count += 1;
-                    if cur == v {
-                        return Some(v);
-                    }
-                }
-                None::<i32>
-            })
-            .unwrap_or_else(|| {
-                // Fallback: just take the first node in pred
-                *ncfq.pred.keys().next().unwrap()
-            });
-
-        assert!(ncfq.is_negative_node_pairs(handle, &dist, &get_weight));
     }
 }
