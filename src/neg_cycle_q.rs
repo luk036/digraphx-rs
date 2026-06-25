@@ -110,9 +110,9 @@ where
 
     /// Predecessor relaxation (Bellman–Ford style) with constraint.
     ///
-    /// For each edge $(u, v)$, updates $d[v]$ when:
+    /// For each edge $(u, v)$, updates $d\[v\]$ when:
     ///
-    /// $$ d[v] > d[u] + w(u,v) $$
+    /// $$ d\[v\] > d\[u\] + w(u,v) $$
     ///
     /// AND $\text{update\_ok}(d_{\text{old}}, d_{\text{new}})$ is `true`.
     ///
@@ -149,9 +149,9 @@ where
 
     /// Successor relaxation (reverse Bellman–Ford style) with constraint.
     ///
-    /// For each edge $(u, v)$, updates $d[u]$ when:
+    /// For each edge $(u, v)$, updates $d\[u\]$ when:
     ///
-    /// $$ d[u] < d[v] - w(u,v) $$
+    /// $$ d\[u\] < d\[v\] - w(u,v) $$
     ///
     /// AND $\text{update\_ok}(d_{\text{old}}, d_{\text{new}})$ is `true`.
     ///
@@ -212,7 +212,7 @@ where
     ///
     /// A cycle is negative if for any edge $(u,v)$ on the cycle:
     ///
-    /// $$ d[v] > d[u] + w(u,v) $$
+    /// $$ d\[v\] > d\[u\] + w(u,v) $$
     ///
     /// The `get_weight` closure receives a reference to the stored edge data.
     pub fn is_negative<F>(
