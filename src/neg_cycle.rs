@@ -124,6 +124,8 @@ where
 
     /// Howard's algorithm: find a negative cycle in the graph.
     ///
+    /// $$ \text{Repeat relax until fixpoint; if a cycle exists in the predecessor graph, it is negative} $$
+    ///
     /// Returns `Some(cycle)` where `cycle` is a list of edge weights
     /// forming a negative cycle, or `None` if no negative cycle exists.
     ///
