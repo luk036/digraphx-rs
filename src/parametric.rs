@@ -105,6 +105,8 @@ where
 
     /// Run the parametric solver.
     ///
+    /// $$ w_{ij}(r) = \text{distance}(w_{ij}, r) $$
+    ///
     /// Updates `ratio` in place to the maximum feasible value and returns
     /// the critical cycle (the cycle that determines the optimal ratio).
     /// Returns an empty vector if no cycle was necessary.

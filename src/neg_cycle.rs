@@ -126,6 +126,10 @@ where
     ///
     /// $$ \text{Repeat relax until fixpoint; if a cycle exists in the predecessor graph, it is negative} $$
     ///
+    /// A cycle is negative iff:
+    ///
+    /// $$ \sum_{C} w_{ij} < 0 $$
+    ///
     /// Returns `Some(cycle)` where `cycle` is a list of edge weights
     /// forming a negative cycle, or `None` if no negative cycle exists.
     ///

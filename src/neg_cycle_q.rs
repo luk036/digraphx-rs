@@ -246,6 +246,10 @@ where
 
     /// Predecessor-based Howard's algorithm with constraint.
     ///
+    /// A cycle is negative iff:
+    ///
+    /// $$ \sum_{C} w_{ij} < 0 $$
+    ///
     /// Returns the first negative cycle found as a list of edge weights,
     /// or `None` if no negative cycle exists.
     ///
@@ -275,6 +279,10 @@ where
     // ------------------------------------------------------------------
 
     /// Successor-based Howard's algorithm with constraint.
+    ///
+    /// A cycle is negative iff:
+    ///
+    /// $$ \sum_{C} w_{ij} < 0 $$
     ///
     /// Returns the first negative cycle found as a list of edge weights,
     /// or `None` if no negative cycle exists.
@@ -328,6 +336,10 @@ where
 
     /// Find one negative cycle (predecessor) returning node-pair edges.
     ///
+    /// A cycle is negative iff:
+    ///
+    /// $$ \sum_{C} w_{ij} < 0 $$
+    ///
     /// The `get_weight` closure receives a reference to the stored edge data.
     /// Returns the cycle as a `Vec` of `(Node, Node)` edges, or `None`.
     pub fn find_neg_cycle_pred<F, U>(
@@ -355,6 +367,10 @@ where
     // ------------------------------------------------------------------
 
     /// Find one negative cycle (successor) returning node-pair edges.
+    ///
+    /// A cycle is negative iff:
+    ///
+    /// $$ \sum_{C} w_{ij} < 0 $$
     ///
     /// The `get_weight` closure receives a reference to the stored edge data.
     /// Returns the cycle as a `Vec` of `(Node, Node)` edges, or `None`.
