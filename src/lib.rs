@@ -79,20 +79,126 @@ pub trait Graph {
     /// Edge weight (must support addition and ordering).
     type Weight: Copy + Add<Output = Self::Weight> + PartialOrd;
 
-    /// Iterator over node identifiers.
-    type Nodes: IntoIterator<Item = Self::Node>;
+    /// Iterator over node identifiers (borrows from the graph).
+    type Nodes<'a>: IntoIterator<Item = Self::Node>
+    where
+        Self: 'a;
 
-    /// Iterator over (neighbor, weight) pairs for a given node.
-    type Neighbors: IntoIterator<Item = (Self::Node, Self::Weight)>;
+    /// Iterator over (neighbor, weight) pairs for a given node (borrows from
+    /// the graph).  Returning a borrowing iterator avoids the per-call `Vec`
+    /// allocation that the previous `Vec::IntoIter`-based approach required.
+    type Neighbors<'a>: IntoIterator<Item = (Self::Node, Self::Weight)>
+    where
+        Self: 'a;
 
     /// Return all nodes in the graph.
-    fn nodes(&self) -> Self::Nodes;
+    fn nodes(&self) -> Self::Nodes<'_>;
 
     /// Return an iterator over the outgoing edges of `node`.
-    fn neighbors(&self, node: Self::Node) -> Self::Neighbors;
+    fn neighbors(&self, node: Self::Node) -> Self::Neighbors<'_>;
 
     /// Return the number of nodes.
     fn num_nodes(&self) -> usize;
+}
+
+// ---------------------------------------------------------------------------
+// Helper iterator types for HashMap / BTreeMap neighbours
+// ---------------------------------------------------------------------------
+
+/// Non-allocating neighbour iterator for `HashMap`-backed graphs.
+///
+/// Wraps the inner `Iter` and copies `(&N, &W)` → `(N, W)` per call without
+/// collecting into an intermediate `Vec`.
+#[derive(Debug, Clone)]
+pub struct HashMapNeighborsIter<'a, N: 'a, W: 'a> {
+    inner: std::collections::hash_map::Iter<'a, N, W>,
+}
+
+impl<'a, N: Copy, W: Copy> Iterator for HashMapNeighborsIter<'a, N, W> {
+    type Item = (N, W);
+    #[inline(always)]
+    fn next(&mut self) -> Option<(N, W)> {
+        self.inner.next().map(|(&k, &v)| (k, v))
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+}
+
+/// Sum type that handles both "node found" and "node not found" without
+/// allocating a temporary [`HashMap`] for the empty case.
+#[derive(Debug, Clone)]
+pub enum HashMapNeighbors<'a, N: 'a, W: 'a> {
+    /// The node exists and we iterate its neighbours.
+    Found(HashMapNeighborsIter<'a, N, W>),
+    /// The node does not exist — empty iteration.
+    NotFound,
+}
+
+impl<'a, N: Copy, W: Copy> Iterator for HashMapNeighbors<'a, N, W> {
+    type Item = (N, W);
+    #[inline(always)]
+    fn next(&mut self) -> Option<(N, W)> {
+        match self {
+            HashMapNeighbors::Found(iter) => iter.next(),
+            HashMapNeighbors::NotFound => None,
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match self {
+            HashMapNeighbors::Found(iter) => iter.size_hint(),
+            HashMapNeighbors::NotFound => (0, Some(0)),
+        }
+    }
+}
+
+/// Non-allocating neighbour iterator for `BTreeMap`-backed graphs.
+#[derive(Debug, Clone)]
+pub struct BTreeMapNeighborsIter<'a, N: 'a, W: 'a> {
+    inner: std::collections::btree_map::Iter<'a, N, W>,
+}
+
+impl<'a, N: Copy, W: Copy> Iterator for BTreeMapNeighborsIter<'a, N, W> {
+    type Item = (N, W);
+    #[inline(always)]
+    fn next(&mut self) -> Option<(N, W)> {
+        self.inner.next().map(|(&k, &v)| (k, v))
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+}
+
+/// Sum type for "found" / "not found" without allocating a temporary.
+#[derive(Debug, Clone)]
+pub enum BTreeMapNeighbors<'a, N: 'a, W: 'a> {
+    Found(BTreeMapNeighborsIter<'a, N, W>),
+    NotFound,
+}
+
+impl<'a, N: Copy, W: Copy> Iterator for BTreeMapNeighbors<'a, N, W> {
+    type Item = (N, W);
+    #[inline(always)]
+    fn next(&mut self) -> Option<(N, W)> {
+        match self {
+            BTreeMapNeighbors::Found(iter) => iter.next(),
+            BTreeMapNeighbors::NotFound => None,
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match self {
+            BTreeMapNeighbors::Found(iter) => iter.size_hint(),
+            BTreeMapNeighbors::NotFound => (0, Some(0)),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -130,21 +236,27 @@ where
 {
     type Node = N;
     type Weight = W;
-    type Nodes = std::vec::IntoIter<N>;
-    type Neighbors = std::vec::IntoIter<(N, W)>;
 
-    fn nodes(&self) -> Self::Nodes {
-        self.keys().copied().collect::<Vec<_>>().into_iter()
+    type Nodes<'a>
+        = std::iter::Copied<std::collections::hash_map::Keys<'a, N, HashMap<N, W>>>
+    where
+        N: 'a,
+        W: 'a;
+
+    type Neighbors<'a>
+        = HashMapNeighbors<'a, N, W>
+    where
+        N: 'a,
+        W: 'a;
+
+    fn nodes(&self) -> Self::Nodes<'_> {
+        self.keys().copied()
     }
 
-    fn neighbors(&self, node: N) -> Self::Neighbors {
+    fn neighbors(&self, node: N) -> Self::Neighbors<'_> {
         match self.get(&node) {
-            Some(nbrs) => nbrs
-                .iter()
-                .map(|(&k, &v)| (k, v))
-                .collect::<Vec<_>>()
-                .into_iter(),
-            None => Vec::new().into_iter(),
+            Some(nbrs) => HashMapNeighbors::Found(HashMapNeighborsIter { inner: nbrs.iter() }),
+            None => HashMapNeighbors::NotFound,
         }
     }
 
@@ -162,21 +274,29 @@ where
 {
     type Node = N;
     type Weight = W;
-    type Nodes = std::vec::IntoIter<N>;
-    type Neighbors = std::vec::IntoIter<(N, W)>;
 
-    fn nodes(&self) -> Self::Nodes {
-        self.keys().copied().collect::<Vec<_>>().into_iter()
+    type Nodes<'a>
+        = std::iter::Copied<
+        std::collections::btree_map::Keys<'a, N, std::collections::BTreeMap<N, W>>,
+    >
+    where
+        N: 'a,
+        W: 'a;
+
+    type Neighbors<'a>
+        = BTreeMapNeighbors<'a, N, W>
+    where
+        N: 'a,
+        W: 'a;
+
+    fn nodes(&self) -> Self::Nodes<'_> {
+        self.keys().copied()
     }
 
-    fn neighbors(&self, node: N) -> Self::Neighbors {
+    fn neighbors(&self, node: N) -> Self::Neighbors<'_> {
         match self.get(&node) {
-            Some(nbrs) => nbrs
-                .iter()
-                .map(|(&k, &v)| (k, v))
-                .collect::<Vec<_>>()
-                .into_iter(),
-            None => Vec::new().into_iter(),
+            Some(nbrs) => BTreeMapNeighbors::Found(BTreeMapNeighborsIter { inner: nbrs.iter() }),
+            None => BTreeMapNeighbors::NotFound,
         }
     }
 
@@ -226,25 +346,33 @@ where
 // vector stores (neighbor, weight) pairs.  Matches the C++ convention of
 // `vector<vector<pair<size_t, W>>>` wrapped by `MapAdapter`.
 
-#[allow(clippy::unnecessary_to_owned)]
 impl<W> Graph for Vec<Vec<(usize, W)>>
 where
     W: Copy + Add<Output = W> + PartialOrd,
 {
     type Node = usize;
     type Weight = W;
-    type Nodes = Range<usize>;
-    type Neighbors = std::vec::IntoIter<(usize, W)>;
 
-    fn nodes(&self) -> Self::Nodes {
+    type Nodes<'a>
+        = Range<usize>
+    where
+        W: 'a;
+
+    type Neighbors<'a>
+        = std::iter::Copied<std::slice::Iter<'a, (usize, W)>>
+    where
+        W: 'a;
+
+    fn nodes(&self) -> Self::Nodes<'_> {
         0..self.len()
     }
 
-    fn neighbors(&self, node: usize) -> Self::Neighbors {
-        match self.get(node) {
-            Some(nbrs) => nbrs.to_vec().into_iter(),
-            None => Vec::new().into_iter(),
-        }
+    fn neighbors(&self, node: usize) -> Self::Neighbors<'_> {
+        self.get(node)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+            .iter()
+            .copied()
     }
 
     fn num_nodes(&self) -> usize {
@@ -259,25 +387,34 @@ where
 // provides the graph interface.  Here `MapAdapter<Vec<(usize, W)>>` stores
 // the adjacency list in its inner Vec (`lst: Vec<Vec<(usize, W)>>`).
 
-#[allow(clippy::unnecessary_to_owned)]
 impl<W> Graph for MapAdapter<Vec<(usize, W)>>
 where
     W: Copy + Add<Output = W> + PartialOrd,
 {
     type Node = usize;
     type Weight = W;
-    type Nodes = Range<usize>;
-    type Neighbors = std::vec::IntoIter<(usize, W)>;
 
-    fn nodes(&self) -> Self::Nodes {
+    type Nodes<'a>
+        = Range<usize>
+    where
+        W: 'a;
+
+    type Neighbors<'a>
+        = std::iter::Copied<std::slice::Iter<'a, (usize, W)>>
+    where
+        W: 'a;
+
+    fn nodes(&self) -> Self::Nodes<'_> {
         0..self.len()
     }
 
-    fn neighbors(&self, node: usize) -> Self::Neighbors {
-        match self.lst.get(node) {
-            Some(nbrs) => nbrs.to_vec().into_iter(),
-            None => Vec::new().into_iter(),
-        }
+    fn neighbors(&self, node: usize) -> Self::Neighbors<'_> {
+        self.lst
+            .get(node)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+            .iter()
+            .copied()
     }
 
     fn num_nodes(&self) -> usize {
@@ -322,14 +459,22 @@ pub mod petgraph_adapter {
     {
         type Node = NodeIndex;
         type Weight = E;
-        type Nodes = std::vec::IntoIter<NodeIndex>;
-        type Neighbors = PetNeighbors<'a, E>;
 
-        fn nodes(&self) -> Self::Nodes {
-            self.0.node_indices().collect::<Vec<_>>().into_iter()
+        type Nodes<'b>
+            = petgraph::graph::NodeIndices
+        where
+            PetGraph<'a, V, E>: 'b;
+
+        type Neighbors<'b>
+            = PetNeighbors<'b, E>
+        where
+            PetGraph<'a, V, E>: 'b;
+
+        fn nodes(&self) -> Self::Nodes<'_> {
+            self.0.node_indices()
         }
 
-        fn neighbors(&self, node: NodeIndex) -> Self::Neighbors {
+        fn neighbors(&self, node: NodeIndex) -> Self::Neighbors<'_> {
             PetNeighbors {
                 iter: self.0.edges(node),
             }
