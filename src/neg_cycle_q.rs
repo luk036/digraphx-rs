@@ -61,6 +61,7 @@ pub struct NegCycleFinderQ<'a, G: Graph> {
     graph: &'a G,
     pred: HashMap<G::Node, (G::Node, G::Weight)>,
     succ: HashMap<G::Node, (G::Node, G::Weight)>,
+    visited: HashMap<G::Node, G::Node>,
 }
 
 impl<'a, G: Graph> NegCycleFinderQ<'a, G>
@@ -74,34 +75,8 @@ where
             graph,
             pred: HashMap::new(),
             succ: HashMap::new(),
+            visited: HashMap::new(),
         }
-    }
-
-    /// Find a cycle in the given mapping (`pred` or `succ`).
-    fn find_cycle(&self, point_to: &HashMap<G::Node, (G::Node, G::Weight)>) -> Option<G::Node> {
-        let mut visited: HashMap<G::Node, G::Node> = HashMap::new();
-        for vtx in self.graph.nodes() {
-            if visited.contains_key(&vtx) {
-                continue;
-            }
-            let mut utx = vtx;
-            while !visited.contains_key(&utx) {
-                visited.insert(utx, vtx);
-                match point_to.get(&utx) {
-                    None => break,
-                    Some(&(prev, _)) => {
-                        utx = prev;
-                        if let Some(&root) = visited.get(&utx) {
-                            if root == vtx {
-                                return Some(utx);
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        None
     }
 
     // ------------------------------------------------------------------
@@ -266,7 +241,7 @@ where
     {
         self.pred.clear();
         while self.relax_pred(dist, &get_weight, &update_ok) {
-            if let Some(vtx) = self.find_cycle(&self.pred) {
+            if let Some(vtx) = crate::find_cycle_in(self.graph, &self.pred, &mut self.visited) {
                 debug_assert!(self.is_negative(vtx, dist, &get_weight));
                 return Some(self.cycle_list(vtx, &self.pred));
             }
@@ -300,7 +275,7 @@ where
     {
         self.succ.clear();
         while self.relax_succ(dist, &get_weight, &update_ok) {
-            if let Some(vtx) = self.find_cycle(&self.succ) {
+            if let Some(vtx) = crate::find_cycle_in(self.graph, &self.succ, &mut self.visited) {
                 return Some(self.cycle_list(vtx, &self.succ));
             }
         }
@@ -354,7 +329,7 @@ where
     {
         self.pred.clear();
         while self.relax_pred(dist, &get_weight, &update_ok) {
-            if let Some(vtx) = self.find_cycle(&self.pred) {
+            if let Some(vtx) = crate::find_cycle_in(self.graph, &self.pred, &mut self.visited) {
                 debug_assert!(self.is_negative(vtx, dist, &get_weight));
                 return Some(self.cycle_list_node_pairs(vtx, &self.pred));
             }
@@ -386,7 +361,7 @@ where
     {
         self.succ.clear();
         while self.relax_succ(dist, &get_weight, &update_ok) {
-            if let Some(vtx) = self.find_cycle(&self.succ) {
+            if let Some(vtx) = crate::find_cycle_in(self.graph, &self.succ, &mut self.visited) {
                 return Some(self.cycle_list_node_pairs(vtx, &self.succ));
             }
         }

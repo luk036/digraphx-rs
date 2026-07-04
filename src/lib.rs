@@ -329,13 +329,14 @@ where
         return Vec::new();
     }
     let max_node = edges.iter().map(|&(u, v, _)| u.max(v)).max().unwrap_or(0);
-    let mut g: Vec<Vec<(usize, W)>> = (0..=max_node).map(|_| Vec::new()).collect();
+    // Pre-compute out-degree so each inner Vec is allocated with exact capacity.
+    let mut out_deg = vec![0usize; max_node + 1];
+    for &(u, _, _) in edges {
+        out_deg[u] += 1;
+    }
+    let mut g: Vec<Vec<(usize, W)>> = out_deg.iter().map(|&d| Vec::with_capacity(d)).collect();
     for &(u, v, w) in edges {
         g[u].push((v, w));
-        // Ensure v exists if it doesn't yet have outgoing edges
-        if v > max_node {
-            g.resize(v + 1, Vec::new());
-        }
     }
     g
 }
@@ -507,6 +508,43 @@ pub use petgraph_adapter::PetGraph;
 // ---------------------------------------------------------------------------
 // Zero helper (internal)
 // ---------------------------------------------------------------------------
+
+/// Shared cycle-finding logic used by both [`NegCycleFinder`] and
+/// [`NegCycleFinderQ`].  The caller provides a reusable `visited` map
+/// whose backing storage is retained across calls via `.clear()`.
+pub(crate) fn find_cycle_in<G: Graph>(
+    graph: &G,
+    point_to: &HashMap<G::Node, (G::Node, G::Weight)>,
+    visited: &mut HashMap<G::Node, G::Node>,
+) -> Option<G::Node>
+where
+    G::Node: Copy + Eq + Hash,
+    G::Weight: Copy,
+{
+    visited.clear();
+    for vtx in graph.nodes() {
+        if visited.contains_key(&vtx) {
+            continue;
+        }
+        let mut utx = vtx;
+        while !visited.contains_key(&utx) {
+            visited.insert(utx, vtx);
+            match point_to.get(&utx) {
+                None => break,
+                Some(&(prev, _)) => {
+                    utx = prev;
+                    if let Some(&root) = visited.get(&utx) {
+                        if root == vtx {
+                            return Some(utx);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    None
+}
 
 /// Trait for additive identity.
 pub trait Zero: Sized {

@@ -31,6 +31,7 @@ use crate::Zero;
 pub struct NegCycleFinder<'a, G: Graph> {
     graph: &'a G,
     pred: HashMap<G::Node, (G::Node, G::Weight)>,
+    visited: HashMap<G::Node, G::Node>,
 }
 
 impl<'a, G: Graph> NegCycleFinder<'a, G>
@@ -48,6 +49,7 @@ where
         NegCycleFinder {
             graph,
             pred: HashMap::new(),
+            visited: HashMap::new(),
         }
     }
 
@@ -76,35 +78,6 @@ where
             }
         }
         changed
-    }
-
-    /// Find a cycle in the predecessor graph.
-    ///
-    /// Returns the start node of a cycle if one exists.
-    fn find_cycle(&self) -> Option<G::Node> {
-        let mut visited: HashMap<G::Node, G::Node> = HashMap::new();
-        for vtx in self.graph.nodes() {
-            if visited.contains_key(&vtx) {
-                continue;
-            }
-            let mut utx = vtx;
-            while !visited.contains_key(&utx) {
-                visited.insert(utx, vtx);
-                match self.pred.get(&utx) {
-                    None => break,
-                    Some(&(prev, _)) => {
-                        utx = prev;
-                        if let Some(&root) = visited.get(&utx) {
-                            if root == vtx {
-                                return Some(utx);
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        None
     }
 
     /// Reconstruct the cycle edges starting from `handle`.
@@ -148,7 +121,7 @@ where
     {
         self.pred.clear();
         while self.relax(dist, &get_weight) {
-            if let Some(vtx) = self.find_cycle() {
+            if let Some(vtx) = crate::find_cycle_in(self.graph, &self.pred, &mut self.visited) {
                 return Some(self.cycle_list(vtx));
             }
         }

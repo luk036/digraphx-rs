@@ -122,9 +122,6 @@ where
             for d in dist.values_mut() {
                 *d = G::Weight::zero();
             }
-            // Create fresh finder to reset predecessor map
-            let graph = self.ncf.graph();
-            self.ncf = NegCycleFinder::new(graph);
 
             let get_weight = |w: &G::Weight| self.omega.distance(ratio, w);
             if let Some(ci) = self.ncf.howard(dist, get_weight) {
