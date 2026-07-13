@@ -115,7 +115,7 @@ where
         dist: &mut HashMap<G::Node, G::Weight>,
         ratio: &mut G::Weight,
     ) -> Vec<G::Weight> {
-        let mut cycle = Vec::new();
+        let mut best_cycle = Vec::new();
 
         loop {
             // Reset distances to zero
@@ -123,18 +123,22 @@ where
                 *d = G::Weight::zero();
             }
 
-            let get_weight = |w: &G::Weight| self.omega.distance(ratio, w);
-            if let Some(ci) = self.ncf.howard(dist, get_weight) {
+            let current_ratio = *ratio;
+            let get_weight = |w: &G::Weight| self.omega.distance(&current_ratio, w);
+            let mut found_better = false;
+            for ci in self.ncf.howard(dist, get_weight) {
                 let ri = self.omega.zero_cancel(&ci);
                 if ri < *ratio {
-                    cycle = ci;
+                    best_cycle = ci;
                     *ratio = ri;
-                    continue;
+                    found_better = true;
                 }
             }
-            break;
+            if !found_better {
+                break;
+            }
         }
-        cycle
+        best_cycle
     }
 }
 

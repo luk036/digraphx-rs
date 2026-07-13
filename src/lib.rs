@@ -24,11 +24,12 @@
 //! let mut ncf = NegCycleFinder::new(&graph);
 //! let mut dist: HashMap<&str, i32> =
 //!     [("a", 0), ("b", 0), ("c", 0)].into();
-//! let cycle = ncf.howard(&mut dist, |w| *w);
-//! assert!(cycle.is_some());
+//! let has_cycle = ncf.howard(&mut dist, |w| *w).into_iter().next().is_some();
+//! assert!(has_cycle);
 //! ```
 
 pub mod map_adapter;
+pub mod mcf;
 pub mod neg_cycle;
 pub mod neg_cycle_q;
 pub mod parametric;
@@ -510,40 +511,41 @@ pub use petgraph_adapter::PetGraph;
 // ---------------------------------------------------------------------------
 
 /// Shared cycle-finding logic used by both [`NegCycleFinder`] and
-/// [`NegCycleFinderQ`].  The caller provides a reusable `visited` map
-/// whose backing storage is retained across calls via `.clear()`.
-pub(crate) fn find_cycle_in<G: Graph>(
+/// [`NegCycleFinderQ`].  Returns **all** cycle start nodes found in the
+/// predecessor / successor graph so callers can inspect every candidate.
+pub(crate) fn find_cycles_in<G: Graph>(
     graph: &G,
     point_to: &HashMap<G::Node, (G::Node, G::Weight)>,
-    visited: &mut HashMap<G::Node, G::Node>,
-) -> Option<G::Node>
+) -> Vec<G::Node>
 where
     G::Node: Copy + Eq + Hash,
     G::Weight: Copy,
 {
-    visited.clear();
+    let mut result = Vec::new();
+    let mut visited: HashMap<G::Node, G::Node> = HashMap::new();
     for vtx in graph.nodes() {
         if visited.contains_key(&vtx) {
             continue;
         }
         let mut utx = vtx;
-        while !visited.contains_key(&utx) {
-            visited.insert(utx, vtx);
+        visited.insert(utx, vtx);
+        loop {
             match point_to.get(&utx) {
                 None => break,
                 Some(&(prev, _)) => {
                     utx = prev;
                     if let Some(&root) = visited.get(&utx) {
                         if root == vtx {
-                            return Some(utx);
+                            result.push(utx);
                         }
                         break;
                     }
+                    visited.insert(utx, vtx);
                 }
             }
         }
     }
-    None
+    result
 }
 
 /// Trait for additive identity.
@@ -651,8 +653,7 @@ mod tests {
         let g = graph_from_edges_array(&[(0, 1, 1i32), (1, 2, 1), (2, 0, -3)]);
         let mut ncf = NegCycleFinder::new(&g);
         let mut dist: HashMap<usize, i32> = [(0, 0), (1, 0), (2, 0)].into();
-        let result = ncf.howard(&mut dist, |w| *w);
-        assert!(result.is_some());
+        assert!(ncf.howard(&mut dist, |w| *w).into_iter().next().is_some());
     }
 
     #[test]
@@ -660,8 +661,7 @@ mod tests {
         let g = graph_from_edges_array(&[(0, 1, 1i32), (1, 0, 1)]);
         let mut ncf = NegCycleFinder::new(&g);
         let mut dist: HashMap<usize, i32> = [(0, 0), (1, 0)].into();
-        let result = ncf.howard(&mut dist, |w| *w);
-        assert!(result.is_none());
+        assert!(ncf.howard(&mut dist, |w| *w).into_iter().next().is_none());
     }
 
     #[test]
@@ -679,8 +679,7 @@ mod tests {
         let g = MapAdapter::new(adj);
         let mut ncf = NegCycleFinder::new(&g);
         let mut dist: HashMap<usize, i32> = [(0, 0), (1, 0), (2, 0)].into();
-        let result = ncf.howard(&mut dist, |w| *w);
-        assert!(result.is_some());
+        assert!(ncf.howard(&mut dist, |w| *w).into_iter().next().is_some());
     }
 
     #[test]

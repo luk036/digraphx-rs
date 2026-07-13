@@ -16,8 +16,12 @@ fn main() {
     let mut ncf = NegCycleFinder::new(&graph);
     let mut dist: HashMap<&str, i32> = [("a", 0), ("b", 0), ("c", 0)].into();
 
-    match ncf.howard(&mut dist, |w| *w) {
-        Some(cycle) => println!("Found negative cycle with edges: {:?}", cycle),
-        None => println!("No negative cycle found"),
+    let mut found = false;
+    for cycle in ncf.howard(&mut dist, |w| *w) {
+        println!("Found negative cycle with edges: {:?}", cycle);
+        found = true;
+    }
+    if !found {
+        println!("No negative cycle found");
     }
 }

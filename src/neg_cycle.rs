@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::ops::Add;
+use std::pin::Pin;
+
+use genawaiter::sync::Gen;
 
 use crate::Graph;
 use crate::Zero;
@@ -25,13 +28,12 @@ use crate::Zero;
 ///
 /// let mut ncf = NegCycleFinder::new(&graph);
 /// let mut dist: HashMap<&str, i32> = [("a", 0), ("b", 0), ("c", 0)].into();
-/// let result = ncf.howard(&mut dist, |w| *w);
-/// assert!(result.is_none()); // no negative cycle
+/// let cycles: Vec<_> = ncf.howard(&mut dist, |w| *w).into_iter().collect();
+/// assert!(cycles.is_empty()); // no negative cycle
 /// ```
 pub struct NegCycleFinder<'a, G: Graph> {
     graph: &'a G,
     pred: HashMap<G::Node, (G::Node, G::Weight)>,
-    visited: HashMap<G::Node, G::Node>,
 }
 
 impl<'a, G: Graph> NegCycleFinder<'a, G>
@@ -49,7 +51,6 @@ where
         NegCycleFinder {
             graph,
             pred: HashMap::new(),
-            visited: HashMap::new(),
         }
     }
 
@@ -65,14 +66,14 @@ where
         F: Fn(&G::Weight) -> G::Weight,
     {
         let mut changed = false;
-        for u in self.graph.nodes() {
-            let du = *dist.get(&u).unwrap_or(&G::Weight::zero());
-            for (v, w) in self.graph.neighbors(u) {
+        for utx in self.graph.nodes() {
+            let du = *dist.get(&utx).unwrap_or(&G::Weight::zero());
+            for (vtx, w) in self.graph.neighbors(utx) {
                 let distance = du + get_weight(&w);
-                let dv = *dist.get(&v).unwrap_or(&G::Weight::zero());
+                let dv = *dist.get(&vtx).unwrap_or(&G::Weight::zero());
                 if dv > distance {
-                    dist.insert(v, distance);
-                    self.pred.insert(v, (u, w));
+                    dist.insert(vtx, distance);
+                    self.pred.insert(vtx, (utx, w));
                     changed = true;
                 }
             }
@@ -85,9 +86,9 @@ where
         let mut vtx = handle;
         let mut cycle = Vec::new();
         loop {
-            let &(u, w) = self.pred.get(&vtx).unwrap();
+            let &(utx, w) = self.pred.get(&vtx).unwrap();
             cycle.push(w);
-            vtx = u;
+            vtx = utx;
             if vtx == handle {
                 break;
             }
@@ -95,37 +96,52 @@ where
         cycle
     }
 
-    /// Howard's algorithm: find a negative cycle in the graph.
+    /// Howard's algorithm: find negative cycles using policy iteration.
     ///
-    /// $$ \text{Repeat relax until fixpoint; if a cycle exists in the predecessor graph, it is negative} $$
+    /// $$ \text{Repeat relax until fixpoint; yield every cycle found in the predecessor graph} $$
     ///
     /// A cycle is negative iff:
     ///
     /// $$ \sum_{C} w_{ij} < 0 $$
     ///
-    /// Returns `Some(cycle)` where `cycle` is a list of edge weights
-    /// forming a negative cycle, or `None` if no negative cycle exists.
+    /// Yields each cycle as a list of edge weights, lazily via a [`Gen`]
+    /// (synchronous generator).  Loop over it directly:
+    ///
+    /// ```rust,ignore
+    /// for cycle in ncf.howard(&mut dist, |w| *w) {
+    ///     // each `cycle` is a Vec<Weight> forming a negative cycle
+    /// }
+    /// ```
     ///
     /// # Type parameters
     ///
     /// * `F` — weight-extraction closure (typically `\|w\| *w` when the
     ///   weight is the edge data itself, or a projection for structured
     ///   edge types).
-    pub fn howard<F>(
-        &mut self,
-        dist: &mut HashMap<G::Node, G::Weight>,
+    pub fn howard<'b, F>(
+        &'b mut self,
+        dist: &'b mut HashMap<G::Node, G::Weight>,
         get_weight: F,
-    ) -> Option<Vec<G::Weight>>
+    ) -> Gen<Vec<G::Weight>, (), Pin<Box<dyn std::future::Future<Output = ()> + 'b>>>
     where
-        F: Fn(&G::Weight) -> G::Weight,
+        F: Fn(&G::Weight) -> G::Weight + 'b,
     {
-        self.pred.clear();
-        while self.relax(dist, &get_weight) {
-            if let Some(vtx) = crate::find_cycle_in(self.graph, &self.pred, &mut self.visited) {
-                return Some(self.cycle_list(vtx));
-            }
-        }
-        None
+        Gen::new(|co| -> Pin<Box<dyn std::future::Future<Output = ()> + 'b>> {
+            Box::pin(async move {
+                self.pred.clear();
+                let mut found = false;
+                // Repeat relax until a cycle appears or no more improvements.
+                // When a cycle is found, yield all cycles in the current
+                // predecessor graph and stop.
+                while !found && self.relax(dist, &get_weight) {
+                    let cycles = crate::find_cycles_in(self.graph, &self.pred);
+                    for vtx in cycles {
+                        found = true;
+                        co.yield_(self.cycle_list(vtx)).await;
+                    }
+                }
+            })
+        })
     }
 }
 
@@ -134,6 +150,16 @@ mod tests {
     use super::*;
     use crate::graph_from_edges;
     use std::collections::HashMap;
+
+    fn has_neg_cycle<G, F>(ncf: &mut NegCycleFinder<'_, G>, dist: &mut HashMap<G::Node, G::Weight>, get_weight: F) -> bool
+    where
+        G: Graph,
+        G::Weight: Add<Output = G::Weight> + PartialOrd + Copy + Zero,
+        G::Node: Copy + Eq + Hash,
+        F: Fn(&G::Weight) -> G::Weight,
+    {
+        ncf.howard(dist, get_weight).into_iter().next().is_some()
+    }
 
     #[test]
     fn test_no_negative_cycle() {
@@ -147,8 +173,7 @@ mod tests {
         ]);
         let mut ncf = NegCycleFinder::new(&graph);
         let mut dist: HashMap<i32, i32> = [(0, 0), (1, 0), (2, 0)].into();
-        let result = ncf.howard(&mut dist, |w| *w);
-        assert!(result.is_none());
+        assert!(!has_neg_cycle(&mut ncf, &mut dist, |w| *w));
     }
 
     #[test]
@@ -156,8 +181,7 @@ mod tests {
         let graph = graph_from_edges(&[(0, 1, 1i32), (1, 2, 1), (2, 0, -3)]);
         let mut ncf = NegCycleFinder::new(&graph);
         let mut dist: HashMap<i32, i32> = [(0, 0), (1, 0), (2, 0)].into();
-        let result = ncf.howard(&mut dist, |w| *w);
-        assert!(result.is_some());
+        assert!(has_neg_cycle(&mut ncf, &mut dist, |w| *w));
     }
 
     #[test]
@@ -165,8 +189,7 @@ mod tests {
         let graph: HashMap<i32, HashMap<i32, i32>> = HashMap::new();
         let mut ncf = NegCycleFinder::new(&graph);
         let mut dist: HashMap<i32, i32> = HashMap::new();
-        let result = ncf.howard(&mut dist, |w| *w);
-        assert!(result.is_none());
+        assert!(!has_neg_cycle(&mut ncf, &mut dist, |w| *w));
     }
 
     #[test]
@@ -178,8 +201,7 @@ mod tests {
 
         let mut ncf = NegCycleFinder::new(&graph);
         let mut dist: HashMap<&str, i32> = [("a", 0), ("b", 0), ("c", 0)].into();
-        let result = ncf.howard(&mut dist, |w| *w);
-        assert!(result.is_some());
+        assert!(has_neg_cycle(&mut ncf, &mut dist, |w| *w));
     }
 
     #[test]
@@ -187,8 +209,7 @@ mod tests {
         let graph: HashMap<i32, HashMap<i32, i32>> = [(0, HashMap::new())].into();
         let mut ncf = NegCycleFinder::new(&graph);
         let mut dist: HashMap<i32, i32> = [(0, 0)].into();
-        let result = ncf.howard(&mut dist, |w| *w);
-        assert!(result.is_none());
+        assert!(!has_neg_cycle(&mut ncf, &mut dist, |w| *w));
     }
 
     #[test]
@@ -206,7 +227,19 @@ mod tests {
             (2, Ratio::new(0, 1)),
         ]
         .into();
-        let result = ncf.howard(&mut dist, |w| *w);
-        assert!(result.is_some());
+        assert!(has_neg_cycle(&mut ncf, &mut dist, |w| *w));
+    }
+
+    #[test]
+    fn test_multiple_cycles_yielded() {
+        // A graph with two disjoint negative cycles
+        let graph = graph_from_edges(&[
+            (0, 1, -1i32), (1, 0, -1),  // cycle 0-1-0: sum = -2
+            (2, 3, -2i32), (3, 2, -2),  // cycle 2-3-2: sum = -4
+        ]);
+        let mut ncf = NegCycleFinder::new(&graph);
+        let mut dist: HashMap<i32, i32> = [(0, 0), (1, 0), (2, 0), (3, 0)].into();
+        let cycles: Vec<_> = ncf.howard(&mut dist, |w| *w).into_iter().collect();
+        assert!(!cycles.is_empty());
     }
 }

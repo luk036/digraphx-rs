@@ -10,6 +10,7 @@ use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, Criterion};
 
 use digraphx_rs::graph_from_edges;
+use digraphx_rs::mcf::{cycle_canceling_mcf, Edge};
 use digraphx_rs::neg_cycle::NegCycleFinder;
 use digraphx_rs::parametric::{MaxParametricSolver, ParametricAPI};
 use num::rational::Ratio;
@@ -25,7 +26,7 @@ fn bench_neg_cycle_small(c: &mut Criterion) {
         b.iter(|| {
             let mut ncf = NegCycleFinder::new(black_box(&graph));
             let mut dist: HashMap<i32, f64> = [(0, 0.0), (1, 0.0), (2, 0.0)].into();
-            ncf.howard(&mut dist, |w| *w)
+            black_box(ncf.howard(&mut dist, |w| *w).into_iter().collect::<Vec<_>>())
         })
     });
 }
@@ -37,7 +38,7 @@ fn bench_neg_cycle_no_cycle(c: &mut Criterion) {
         b.iter(|| {
             let mut ncf = NegCycleFinder::new(black_box(&graph));
             let mut dist: HashMap<i32, f64> = HashMap::new();
-            ncf.howard(&mut dist, |w| *w)
+            black_box(ncf.howard(&mut dist, |w| *w).into_iter().collect::<Vec<_>>())
         })
     });
 }
@@ -54,7 +55,7 @@ fn bench_neg_cycle_medium(c: &mut Criterion) {
         b.iter(|| {
             let mut ncf = NegCycleFinder::new(black_box(&graph));
             let mut dist: HashMap<i32, f64> = (0..100).map(|i| (i, 0.0)).collect();
-            ncf.howard(&mut dist, |w| *w)
+            black_box(ncf.howard(&mut dist, |w| *w).into_iter().collect::<Vec<_>>())
         })
     });
 }
@@ -79,7 +80,7 @@ fn bench_howard_ratio(c: &mut Criterion) {
         b.iter(|| {
             let mut ncf = NegCycleFinder::new(black_box(&graph));
             let mut dist = base_dist.clone();
-            ncf.howard(&mut dist, |w| *w)
+            black_box(ncf.howard(&mut dist, |w| *w).into_iter().collect::<Vec<_>>())
         })
     });
 }
@@ -135,12 +136,106 @@ fn bench_parametric_solver(c: &mut Criterion) {
     });
 }
 
+// ---------------------------------------------------------------------------
+// Min-cost flow (cycle-cancelling MCF) benchmarks
+// ---------------------------------------------------------------------------
+
+/// Build a chain graph: 0 → 1 → 2 → … → (n-1)
+fn build_chain(n: usize) -> HashMap<usize, HashMap<usize, Edge>> {
+    let mut g: HashMap<usize, HashMap<usize, Edge>> = HashMap::new();
+    for i in 0..n - 1 {
+        g.entry(i).or_default().insert(i + 1, Edge::new(1, 100));
+    }
+    g.entry(n - 1).or_default();
+    g
+}
+
+fn bench_mcf_chain_small(c: &mut Criterion) {
+    let g = build_chain(10);
+    let demands = [(0, -5), (9, 5)].into();
+
+    c.bench_function("mcf_chain_10", |b| {
+        b.iter(|| {
+            cycle_canceling_mcf(black_box(&g), black_box(&demands))
+        })
+    });
+}
+
+fn bench_mcf_chain_medium(c: &mut Criterion) {
+    let g = build_chain(100);
+    let demands = [(0, -50), (99, 50)].into();
+
+    c.bench_function("mcf_chain_100", |b| {
+        b.iter(|| {
+            cycle_canceling_mcf(black_box(&g), black_box(&demands))
+        })
+    });
+}
+
+fn bench_mcf_negative_cycle(c: &mut Criterion) {
+    // A graph with a negative-cost cycle (like the spare TSV residual)
+    let mut g: HashMap<usize, HashMap<usize, Edge>> = HashMap::new();
+    g.insert(0, [(1, Edge::new(10, 10)), (2, Edge::new(1, 10))].into());
+    g.insert(1, [(2, Edge::new(1, 10)), (3, Edge::new(1, 10))].into());
+    g.insert(2, [(3, Edge::new(1, 10))].into());
+    g.insert(3, [(1, Edge::new(-8, 10))].into());
+    let demands = [(0, -5), (3, 5)].into();
+
+    c.bench_function("mcf_neg_cycle", |b| {
+        b.iter(|| {
+            cycle_canceling_mcf(black_box(&g), black_box(&demands))
+        })
+    });
+}
+
+fn bench_mcf_spare_tsv_scale(c: &mut Criterion) {
+    let (g, demands) = digraphx_rs::mcf::build_spare_tsv_graph();
+    // Verify cost matches Python reference (1108)
+    let (cost, _) = cycle_canceling_mcf(&g, &demands).unwrap();
+    assert_eq!(cost, 1108);
+
+    c.bench_function("mcf_spare_tsv_195", |b| {
+        b.iter(|| {
+            cycle_canceling_mcf(black_box(&g), black_box(&demands))
+        })
+    });
+}
+
+fn bench_mcf_grid_like(c: &mut Criterion) {
+    // A denser graph: 50 nodes, each connected to next 3, supply/demand spread
+    let mut g: HashMap<usize, HashMap<usize, Edge>> = HashMap::new();
+    for i in 0..50usize {
+        for j in 1..=3 {
+            if i + j < 50 {
+                g.entry(i).or_default().insert(i + j, Edge::new(j as i64, 50));
+            }
+        }
+    }
+    for i in 0..50 {
+        g.entry(i).or_default();
+    }
+    let mut demands: HashMap<usize, i64> = HashMap::new();
+    demands.insert(0, -25);
+    demands.insert(49, 25);
+
+    c.bench_function("mcf_grid_50", |b| {
+        b.iter(|| {
+            cycle_canceling_mcf(black_box(&g), black_box(&demands))
+        })
+    });
+}
+
 criterion_group!(
     benches,
     bench_neg_cycle_small,
     bench_neg_cycle_no_cycle,
     bench_neg_cycle_medium,
     bench_howard_ratio,
-    bench_parametric_solver
+    bench_parametric_solver,
+    bench_mcf_chain_small,
+    bench_mcf_chain_medium,
+    bench_mcf_negative_cycle,
+    bench_mcf_grid_like,
+    bench_mcf_spare_tsv_scale,
 );
 criterion_main!(benches);

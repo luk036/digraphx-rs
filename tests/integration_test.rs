@@ -5,6 +5,15 @@ use digraphx_rs::parametric::{MaxParametricSolver, ParametricAPI};
 use digraphx_rs::NegCycleFinder;
 use std::collections::HashMap;
 
+fn has_neg_cycle<G>(ncf: &mut NegCycleFinder<'_, G>, dist: &mut HashMap<G::Node, G::Weight>) -> bool
+where
+    G: digraphx_rs::Graph,
+    G::Weight: std::ops::Add<Output = G::Weight> + PartialOrd + Copy + digraphx_rs::Zero,
+    G::Node: Copy + Eq + std::hash::Hash,
+{
+    ncf.howard(dist, |w| *w).into_iter().next().is_some()
+}
+
 #[test]
 fn test_neg_cycle_hashmap_string() {
     let mut graph: HashMap<&str, HashMap<&str, i32>> = HashMap::new();
@@ -14,8 +23,7 @@ fn test_neg_cycle_hashmap_string() {
 
     let mut ncf = NegCycleFinder::new(&graph);
     let mut dist: HashMap<&str, i32> = [("a", 0), ("b", 0), ("c", 0)].into();
-    let result = ncf.howard(&mut dist, |w| *w);
-    assert!(result.is_some());
+    assert!(has_neg_cycle(&mut ncf, &mut dist));
 }
 
 #[test]
@@ -23,8 +31,7 @@ fn test_neg_cycle_graph_from_edges() {
     let graph = graph_from_edges(&[(0u32, 1u32, 1i32), (1, 2, 1), (2, 0, -3)]);
     let mut ncf = NegCycleFinder::new(&graph);
     let mut dist: HashMap<u32, i32> = [(0, 0), (1, 0), (2, 0)].into();
-    let result = ncf.howard(&mut dist, |w| *w);
-    assert!(result.is_some());
+    assert!(has_neg_cycle(&mut ncf, &mut dist));
 }
 
 #[test]
@@ -32,8 +39,7 @@ fn test_no_neg_cycle_integration() {
     let graph = graph_from_edges(&[(0u32, 1u32, 1i32), (1, 2, 1), (2, 0, 1)]);
     let mut ncf = NegCycleFinder::new(&graph);
     let mut dist: HashMap<u32, i32> = [(0, 0), (1, 0), (2, 0)].into();
-    let result = ncf.howard(&mut dist, |w| *w);
-    assert!(result.is_none());
+    assert!(!has_neg_cycle(&mut ncf, &mut dist));
 }
 
 #[test]
@@ -73,8 +79,7 @@ fn test_disconnected_graph() {
 
     let mut ncf = NegCycleFinder::new(&graph);
     let mut dist: HashMap<i32, f64> = [(0, 0.0), (1, 0.0), (2, 0.0)].into();
-    let result = ncf.howard(&mut dist, |w| *w);
-    assert!(result.is_none());
+    assert!(!has_neg_cycle(&mut ncf, &mut dist));
 }
 
 #[test]
@@ -87,6 +92,5 @@ fn test_complex_graph_multiple_components() {
 
     let mut ncf = NegCycleFinder::new(&graph);
     let mut dist: HashMap<i32, f64> = [(0, 0.0), (1, 0.0), (2, 0.0), (3, 0.0)].into();
-    let result = ncf.howard(&mut dist, |w| *w);
-    assert!(result.is_none());
+    assert!(!has_neg_cycle(&mut ncf, &mut dist));
 }
