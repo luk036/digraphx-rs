@@ -238,19 +238,21 @@ where
         F: Fn(&G::Weight) -> G::Weight + 'b,
         U: Fn(&G::Weight, &G::Weight) -> bool + 'b,
     {
-        Gen::new(|co| -> Pin<Box<dyn std::future::Future<Output = ()> + 'b>> {
-            Box::pin(async move {
-                self.pred.clear();
-                let mut found = false;
-                while !found && self.relax_pred(dist, &get_weight, &update_ok) {
-                    for &vtx in &crate::find_cycles_in(self.graph, &self.pred) {
-                        debug_assert!(self.is_negative(vtx, dist, &get_weight));
-                        found = true;
-                        co.yield_(self.cycle_list(vtx, &self.pred)).await;
+        Gen::new(
+            |co| -> Pin<Box<dyn std::future::Future<Output = ()> + 'b>> {
+                Box::pin(async move {
+                    self.pred.clear();
+                    let mut found = false;
+                    while !found && self.relax_pred(dist, &get_weight, &update_ok) {
+                        for &vtx in &crate::find_cycles_in(self.graph, &self.pred) {
+                            debug_assert!(self.is_negative(vtx, dist, &get_weight));
+                            found = true;
+                            co.yield_(self.cycle_list(vtx, &self.pred)).await;
+                        }
                     }
-                }
-            })
-        })
+                })
+            },
+        )
     }
 
     // ------------------------------------------------------------------
@@ -277,18 +279,20 @@ where
         F: Fn(&G::Weight) -> G::Weight + 'b,
         U: Fn(&G::Weight, &G::Weight) -> bool + 'b,
     {
-        Gen::new(|co| -> Pin<Box<dyn std::future::Future<Output = ()> + 'b>> {
-            Box::pin(async move {
-                self.succ.clear();
-                let mut found = false;
-                while !found && self.relax_succ(dist, &get_weight, &update_ok) {
-                    for &vtx in &crate::find_cycles_in(self.graph, &self.succ) {
-                        found = true;
-                        co.yield_(self.cycle_list(vtx, &self.succ)).await;
+        Gen::new(
+            |co| -> Pin<Box<dyn std::future::Future<Output = ()> + 'b>> {
+                Box::pin(async move {
+                    self.succ.clear();
+                    let mut found = false;
+                    while !found && self.relax_succ(dist, &get_weight, &update_ok) {
+                        for &vtx in &crate::find_cycles_in(self.graph, &self.succ) {
+                            found = true;
+                            co.yield_(self.cycle_list(vtx, &self.succ)).await;
+                        }
                     }
-                }
-            })
-        })
+                })
+            },
+        )
     }
 }
 
@@ -375,7 +379,8 @@ mod tests {
         let graph = graph_from_edges(&[(0, 1, 1i32), (1, 2, 1), (2, 0, -3)]);
         let mut ncfq = NegCycleFinderQ::new(&graph);
         let mut dist: HashMap<i32, i32> = [(0, 0), (1, 0), (2, 0)].into();
-        let cycles: Vec<_> = ncfq.howard_pred(&mut dist, |w| *w, |_, _| false)
+        let cycles: Vec<_> = ncfq
+            .howard_pred(&mut dist, |w| *w, |_, _| false)
             .into_iter()
             .collect();
         assert!(cycles.is_empty());
@@ -412,11 +417,13 @@ mod tests {
         let graph: HashMap<i32, HashMap<i32, i32>> = HashMap::new();
         let mut ncfq = NegCycleFinderQ::new(&graph);
         let mut dist: HashMap<i32, i32> = HashMap::new();
-        assert!(ncfq.howard_pred(&mut dist, |w| *w, |_, _| true)
+        assert!(ncfq
+            .howard_pred(&mut dist, |w| *w, |_, _| true)
             .into_iter()
             .next()
             .is_none());
-        assert!(ncfq.howard_succ(&mut dist, |w| *w, |_, _| true)
+        assert!(ncfq
+            .howard_succ(&mut dist, |w| *w, |_, _| true)
             .into_iter()
             .next()
             .is_none());

@@ -126,22 +126,24 @@ where
     where
         F: Fn(&G::Weight) -> G::Weight + 'b,
     {
-        Gen::new(|co| -> Pin<Box<dyn std::future::Future<Output = ()> + 'b>> {
-            Box::pin(async move {
-                self.pred.clear();
-                let mut found = false;
-                // Repeat relax until a cycle appears or no more improvements.
-                // When a cycle is found, yield all cycles in the current
-                // predecessor graph and stop.
-                while !found && self.relax(dist, &get_weight) {
-                    let cycles = crate::find_cycles_in(self.graph, &self.pred);
-                    for vtx in cycles {
-                        found = true;
-                        co.yield_(self.cycle_list(vtx)).await;
+        Gen::new(
+            |co| -> Pin<Box<dyn std::future::Future<Output = ()> + 'b>> {
+                Box::pin(async move {
+                    self.pred.clear();
+                    let mut found = false;
+                    // Repeat relax until a cycle appears or no more improvements.
+                    // When a cycle is found, yield all cycles in the current
+                    // predecessor graph and stop.
+                    while !found && self.relax(dist, &get_weight) {
+                        let cycles = crate::find_cycles_in(self.graph, &self.pred);
+                        for vtx in cycles {
+                            found = true;
+                            co.yield_(self.cycle_list(vtx)).await;
+                        }
                     }
-                }
-            })
-        })
+                })
+            },
+        )
     }
 }
 
@@ -151,7 +153,11 @@ mod tests {
     use crate::graph_from_edges;
     use std::collections::HashMap;
 
-    fn has_neg_cycle<G, F>(ncf: &mut NegCycleFinder<'_, G>, dist: &mut HashMap<G::Node, G::Weight>, get_weight: F) -> bool
+    fn has_neg_cycle<G, F>(
+        ncf: &mut NegCycleFinder<'_, G>,
+        dist: &mut HashMap<G::Node, G::Weight>,
+        get_weight: F,
+    ) -> bool
     where
         G: Graph,
         G::Weight: Add<Output = G::Weight> + PartialOrd + Copy + Zero,
@@ -234,8 +240,10 @@ mod tests {
     fn test_multiple_cycles_yielded() {
         // A graph with two disjoint negative cycles
         let graph = graph_from_edges(&[
-            (0, 1, -1i32), (1, 0, -1),  // cycle 0-1-0: sum = -2
-            (2, 3, -2i32), (3, 2, -2),  // cycle 2-3-2: sum = -4
+            (0, 1, -1i32),
+            (1, 0, -1), // cycle 0-1-0: sum = -2
+            (2, 3, -2i32),
+            (3, 2, -2), // cycle 2-3-2: sum = -4
         ]);
         let mut ncf = NegCycleFinder::new(&graph);
         let mut dist: HashMap<i32, i32> = [(0, 0), (1, 0), (2, 0), (3, 0)].into();

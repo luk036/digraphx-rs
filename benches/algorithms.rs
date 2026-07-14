@@ -26,7 +26,11 @@ fn bench_neg_cycle_small(c: &mut Criterion) {
         b.iter(|| {
             let mut ncf = NegCycleFinder::new(black_box(&graph));
             let mut dist: HashMap<i32, f64> = [(0, 0.0), (1, 0.0), (2, 0.0)].into();
-            black_box(ncf.howard(&mut dist, |w| *w).into_iter().collect::<Vec<_>>())
+            black_box(
+                ncf.howard(&mut dist, |w| *w)
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+            )
         })
     });
 }
@@ -38,7 +42,11 @@ fn bench_neg_cycle_no_cycle(c: &mut Criterion) {
         b.iter(|| {
             let mut ncf = NegCycleFinder::new(black_box(&graph));
             let mut dist: HashMap<i32, f64> = HashMap::new();
-            black_box(ncf.howard(&mut dist, |w| *w).into_iter().collect::<Vec<_>>())
+            black_box(
+                ncf.howard(&mut dist, |w| *w)
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+            )
         })
     });
 }
@@ -55,7 +63,11 @@ fn bench_neg_cycle_medium(c: &mut Criterion) {
         b.iter(|| {
             let mut ncf = NegCycleFinder::new(black_box(&graph));
             let mut dist: HashMap<i32, f64> = (0..100).map(|i| (i, 0.0)).collect();
-            black_box(ncf.howard(&mut dist, |w| *w).into_iter().collect::<Vec<_>>())
+            black_box(
+                ncf.howard(&mut dist, |w| *w)
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+            )
         })
     });
 }
@@ -80,7 +92,11 @@ fn bench_howard_ratio(c: &mut Criterion) {
         b.iter(|| {
             let mut ncf = NegCycleFinder::new(black_box(&graph));
             let mut dist = base_dist.clone();
-            black_box(ncf.howard(&mut dist, |w| *w).into_iter().collect::<Vec<_>>())
+            black_box(
+                ncf.howard(&mut dist, |w| *w)
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+            )
         })
     });
 }
@@ -155,9 +171,7 @@ fn bench_mcf_chain_small(c: &mut Criterion) {
     let demands = [(0, -5), (9, 5)].into();
 
     c.bench_function("mcf_chain_10", |b| {
-        b.iter(|| {
-            cycle_canceling_mcf(black_box(&g), black_box(&demands))
-        })
+        b.iter(|| cycle_canceling_mcf(black_box(&g), black_box(&demands)))
     });
 }
 
@@ -166,9 +180,7 @@ fn bench_mcf_chain_medium(c: &mut Criterion) {
     let demands = [(0, -50), (99, 50)].into();
 
     c.bench_function("mcf_chain_100", |b| {
-        b.iter(|| {
-            cycle_canceling_mcf(black_box(&g), black_box(&demands))
-        })
+        b.iter(|| cycle_canceling_mcf(black_box(&g), black_box(&demands)))
     });
 }
 
@@ -182,9 +194,7 @@ fn bench_mcf_negative_cycle(c: &mut Criterion) {
     let demands = [(0, -5), (3, 5)].into();
 
     c.bench_function("mcf_neg_cycle", |b| {
-        b.iter(|| {
-            cycle_canceling_mcf(black_box(&g), black_box(&demands))
-        })
+        b.iter(|| cycle_canceling_mcf(black_box(&g), black_box(&demands)))
     });
 }
 
@@ -195,9 +205,7 @@ fn bench_mcf_spare_tsv_scale(c: &mut Criterion) {
     assert_eq!(cost, 1108);
 
     c.bench_function("mcf_spare_tsv_195", |b| {
-        b.iter(|| {
-            cycle_canceling_mcf(black_box(&g), black_box(&demands))
-        })
+        b.iter(|| cycle_canceling_mcf(black_box(&g), black_box(&demands)))
     });
 }
 
@@ -207,7 +215,9 @@ fn bench_mcf_grid_like(c: &mut Criterion) {
     for i in 0..50usize {
         for j in 1..=3 {
             if i + j < 50 {
-                g.entry(i).or_default().insert(i + j, Edge::new(j as i64, 50));
+                g.entry(i)
+                    .or_default()
+                    .insert(i + j, Edge::new(j as i64, 50));
             }
         }
     }
@@ -219,9 +229,7 @@ fn bench_mcf_grid_like(c: &mut Criterion) {
     demands.insert(49, 25);
 
     c.bench_function("mcf_grid_50", |b| {
-        b.iter(|| {
-            cycle_canceling_mcf(black_box(&g), black_box(&demands))
-        })
+        b.iter(|| cycle_canceling_mcf(black_box(&g), black_box(&demands)))
     });
 }
 

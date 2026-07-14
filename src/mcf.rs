@@ -300,11 +300,8 @@ fn find_all_neg_cycles_bf(
     }
 
     // Map node → index for fast distance lookups
-    let node_to_idx: HashMap<usize, usize> = all_nodes
-        .iter()
-        .enumerate()
-        .map(|(i, &n)| (n, i))
-        .collect();
+    let node_to_idx: HashMap<usize, usize> =
+        all_nodes.iter().enumerate().map(|(i, &n)| (n, i)).collect();
 
     // Bellman-Ford pass with edge tracking.
     // pred: node → (prev_node, edge)
@@ -358,8 +355,7 @@ fn find_all_neg_cycles_bf(
         }
 
         // Trace back to find a cycle start
-        let mut trace_visited: std::collections::HashSet<usize> =
-            std::collections::HashSet::new();
+        let mut trace_visited: std::collections::HashSet<usize> = std::collections::HashSet::new();
         let mut u = start_node;
         while !trace_visited.contains(&u) {
             trace_visited.insert(u);
@@ -449,11 +445,7 @@ pub fn cycle_canceling_mcf(
         let mut cancelled = false;
         for cycle_edges in &cycles {
             // Bottleneck
-            let bottleneck: i64 = cycle_edges
-                .iter()
-                .map(|e| e.capacity)
-                .min()
-                .unwrap_or(0);
+            let bottleneck: i64 = cycle_edges.iter().map(|e| e.capacity).min().unwrap_or(0);
             if bottleneck <= 0 {
                 continue;
             }
@@ -462,17 +454,9 @@ pub fn cycle_canceling_mcf(
             for edge in cycle_edges {
                 let (u_orig, v_orig) = edge.orig;
                 if edge.forward {
-                    *flow
-                        .entry(u_orig)
-                        .or_default()
-                        .entry(v_orig)
-                        .or_insert(0) += bottleneck;
+                    *flow.entry(u_orig).or_default().entry(v_orig).or_insert(0) += bottleneck;
                 } else {
-                    *flow
-                        .entry(u_orig)
-                        .or_default()
-                        .entry(v_orig)
-                        .or_insert(0) -= bottleneck;
+                    *flow.entry(u_orig).or_default().entry(v_orig).or_insert(0) -= bottleneck;
                 }
             }
 
@@ -654,9 +638,28 @@ mod tests {
         // Reproduced from spareTSV/tests/conftest.py:
         //   T=12, vdc base=(2,3), mu=0.12, eta=1.6, seed=5
         // Python reference: cost = 264
-        let x_vals = [0.0, 0.5, 0.25, 0.75, 0.125, 0.625, 0.375, 0.875, 0.0625, 0.5625, 0.3125, 0.8125];
-        let y_vals = [0.0, 0.3333333333333333, 0.6666666666666666, 0.1111111111111111, 0.4444444444444444, 0.7777777777777777, 0.2222222222222222, 0.5555555555555556, 0.8888888888888888, 0.037037037037037035, 0.37037037037037035, 0.7037037037037037];
-        let pos: Vec<(f64, f64)> = x_vals.iter().zip(y_vals.iter()).map(|(&x, &y)| (x, y)).collect();
+        let x_vals = [
+            0.0, 0.5, 0.25, 0.75, 0.125, 0.625, 0.375, 0.875, 0.0625, 0.5625, 0.3125, 0.8125,
+        ];
+        let y_vals = [
+            0.0,
+            0.3333333333333333,
+            0.6666666666666666,
+            0.1111111111111111,
+            0.4444444444444444,
+            0.7777777777777777,
+            0.2222222222222222,
+            0.5555555555555556,
+            0.8888888888888888,
+            0.037037037037037035,
+            0.37037037037037035,
+            0.7037037037037037,
+        ];
+        let pos: Vec<(f64, f64)> = x_vals
+            .iter()
+            .zip(y_vals.iter())
+            .map(|(&x, &y)| (x, y))
+            .collect();
 
         let t = 12usize;
         let eta = 0.8f64;
