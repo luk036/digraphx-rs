@@ -228,6 +228,7 @@ where
     /// looped over directly.
     ///
     /// The `get_weight` closure receives a reference to the stored edge data.
+    #[allow(clippy::type_complexity)]
     pub fn howard_pred<'b, F, U>(
         &'b mut self,
         dist: &'b mut HashMap<G::Node, G::Weight>,
@@ -269,6 +270,7 @@ where
     /// looped over directly.
     ///
     /// The `get_weight` closure receives a reference to the stored edge data.
+    #[allow(clippy::type_complexity)]
     pub fn howard_succ<'b, F, U>(
         &'b mut self,
         dist: &'b mut HashMap<G::Node, G::Weight>,

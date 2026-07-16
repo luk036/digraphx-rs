@@ -118,6 +118,7 @@ where
     /// * `F` — weight-extraction closure (typically `\|w\| *w` when the
     ///   weight is the edge data itself, or a projection for structured
     ///   edge types).
+    #[allow(clippy::type_complexity)]
     pub fn howard<'b, F>(
         &'b mut self,
         dist: &'b mut HashMap<G::Node, G::Weight>,

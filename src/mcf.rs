@@ -369,17 +369,12 @@ fn find_all_neg_cycles_bf(
         // Reconstruct the cycle edges
         let mut cycle_edges: Vec<ResidualEdge> = Vec::new();
         u = cycle_start;
-        loop {
-            match pred.get(&u) {
-                Some(&(prev, edge_ref)) => {
-                    let edge = edge_ref.clone();
-                    if !yielded_orig.contains(&edge.orig) {
-                        cycle_edges.push(edge);
-                    }
-                    u = prev;
-                }
-                None => break,
+        while let Some(&(prev, edge_ref)) = pred.get(&u) {
+            let edge = edge_ref.clone();
+            if !yielded_orig.contains(&edge.orig) {
+                cycle_edges.push(edge);
             }
+            u = prev;
             if u == cycle_start {
                 break;
             }
@@ -419,10 +414,11 @@ fn find_all_neg_cycles_bf(
 /// # Returns
 ///
 /// `Some((total_cost, flow_dict))` or `None` if the problem is infeasible.
+type FlowMap = HashMap<usize, HashMap<usize, i64>>;
 pub fn cycle_canceling_mcf(
     g: &HashMap<usize, HashMap<usize, Edge>>,
     demands: &HashMap<usize, i64>,
-) -> Option<(i64, HashMap<usize, HashMap<usize, i64>>)> {
+) -> Option<(i64, FlowMap)> {
     // Stage 1: find feasible initial flow
     let mut flow = find_feasible_flow(g, demands)?;
 
