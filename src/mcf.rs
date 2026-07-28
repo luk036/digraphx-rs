@@ -24,10 +24,6 @@
 
 use std::collections::{HashMap, VecDeque};
 
-// ---------------------------------------------------------------------------
-// Data structures
-// ---------------------------------------------------------------------------
-
 /// Edge in the original cost / capacity graph.
 #[derive(Debug, Clone, Copy)]
 pub struct Edge {
@@ -50,20 +46,14 @@ pub struct ResidualEdge {
     pub forward: bool,
 }
 
-// ---------------------------------------------------------------------------
-// Feasible flow (greedy BFS)
-// ---------------------------------------------------------------------------
-
 /// Find an initial feasible flow by greedily routing supply → demand via BFS.
 fn find_feasible_flow(
     g: &HashMap<usize, HashMap<usize, Edge>>,
     demands: &HashMap<usize, i64>,
 ) -> Option<HashMap<usize, HashMap<usize, i64>>> {
-    // Collect node set
     let mut nodes: Vec<usize> = g.keys().copied().collect();
     nodes.sort_unstable();
 
-    // Initialise flow to zero for every edge
     let mut flow: HashMap<usize, HashMap<usize, i64>> = HashMap::new();
     for (&u, nbrs) in g {
         let row = flow.entry(u).or_default();
@@ -74,7 +64,6 @@ fn find_feasible_flow(
 
     let mut remaining: HashMap<usize, i64> = demands.clone();
 
-    // Identify supply and demand nodes
     let supply_nodes: Vec<usize> = remaining
         .iter()
         .filter(|(_, &d)| d < 0)
@@ -86,7 +75,6 @@ fn find_feasible_flow(
         .map(|(&n, _)| n)
         .collect();
 
-    // Short-circuit if no flow needed
     if supply_nodes.is_empty() || demand_nodes.is_empty() {
         return Some(flow);
     }
@@ -97,7 +85,6 @@ fn find_feasible_flow(
             let path = bfs_path(g, &flow, src, &demand_nodes, &remaining)?;
             let dst = *path.last().unwrap();
 
-            // Bottleneck = min capacity along path, remaining demand, remaining supply
             let mut bottleneck = i64::MAX;
             for window in path.windows(2) {
                 let u = window[0];
@@ -143,7 +130,6 @@ fn bfs_path(
 
     while let Some(u) = queue.pop_front() {
         if demand_set.contains(&u) && remaining.get(&u).copied().unwrap_or(0) > 0 {
-            // Reconstruct path
             let mut path = vec![u];
             let mut cur = u;
             while cur != src {
@@ -171,10 +157,6 @@ fn bfs_path(
 
     None
 }
-
-// ---------------------------------------------------------------------------
-// Residual graph construction
-// ---------------------------------------------------------------------------
 
 /// Build the full residual graph from current flow.
 fn build_residual(
@@ -230,7 +212,6 @@ fn update_residual_edge(
     u: usize,
     v: usize,
 ) {
-    // Remove stale entries
     if let Some(row) = residual.get_mut(&u) {
         row.remove(&v);
         if row.is_empty() {
@@ -244,7 +225,6 @@ fn update_residual_edge(
         }
     }
 
-    // Rebuild forward and backward edges
     if let Some(data) = g.get(&u).and_then(|nbrs| nbrs.get(&v)) {
         let cap = data.capacity;
         let wgt = data.weight;
@@ -271,10 +251,6 @@ fn update_residual_edge(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Negative cycle detection (Bellman-Ford)
-// ---------------------------------------------------------------------------
-
 /// Find all negative-cost cycles in the residual graph using Bellman-Ford.
 ///
 /// Runs |V| passes; in the V-th pass, every node whose distance still
@@ -283,7 +259,6 @@ fn update_residual_edge(
 fn find_all_neg_cycles_bf(
     residual: &HashMap<usize, HashMap<usize, ResidualEdge>>,
 ) -> Vec<Vec<ResidualEdge>> {
-    // Collect all nodes in the residual graph
     let mut all_nodes: Vec<usize> = residual.keys().copied().collect();
     for row in residual.values() {
         for &v in row.keys() {
@@ -339,7 +314,6 @@ fn find_all_neg_cycles_bf(
         return vec![];
     }
 
-    // Extract cycles from updated_in_last nodes
     let mut cycles: Vec<Vec<ResidualEdge>> = Vec::new();
     let mut yielded_orig: std::collections::HashSet<(usize, usize)> =
         std::collections::HashSet::new();
@@ -354,7 +328,6 @@ fn find_all_neg_cycles_bf(
             continue;
         }
 
-        // Trace back to find a cycle start
         let mut trace_visited: std::collections::HashSet<usize> = std::collections::HashSet::new();
         let mut u = start_node;
         while !trace_visited.contains(&u) {
@@ -366,7 +339,6 @@ fn find_all_neg_cycles_bf(
         }
         let cycle_start = u;
 
-        // Reconstruct the cycle edges
         let mut cycle_edges: Vec<ResidualEdge> = Vec::new();
         u = cycle_start;
         while let Some(&(prev, edge_ref)) = pred.get(&u) {
@@ -396,10 +368,6 @@ fn find_all_neg_cycles_bf(
     cycles
 }
 
-// ---------------------------------------------------------------------------
-// Main MCF solver
-// ---------------------------------------------------------------------------
-
 /// Solve min-cost flow using cycle-cancellation descent.
 ///
 /// Uses Bellman-Ford for negative-cycle detection.
@@ -419,10 +387,8 @@ pub fn cycle_canceling_mcf(
     g: &HashMap<usize, HashMap<usize, Edge>>,
     demands: &HashMap<usize, i64>,
 ) -> Option<(i64, FlowMap)> {
-    // Stage 1: find feasible initial flow
     let mut flow = find_feasible_flow(g, demands)?;
 
-    // Stage 2: cancel negative-cost residual cycles
     let mut residual: HashMap<usize, HashMap<usize, ResidualEdge>> = HashMap::new();
 
     loop {
@@ -440,13 +406,11 @@ pub fn cycle_canceling_mcf(
 
         let mut cancelled = false;
         for cycle_edges in &cycles {
-            // Bottleneck
             let bottleneck: i64 = cycle_edges.iter().map(|e| e.capacity).min().unwrap_or(0);
             if bottleneck <= 0 {
                 continue;
             }
 
-            // Apply flow changes
             for edge in cycle_edges {
                 let (u_orig, v_orig) = edge.orig;
                 if edge.forward {
@@ -456,7 +420,6 @@ pub fn cycle_canceling_mcf(
                 }
             }
 
-            // Update residual edges affected by this cycle
             let mut seen = std::collections::HashSet::new();
             for edge in cycle_edges {
                 let (uo, vo) = edge.orig;
@@ -474,7 +437,6 @@ pub fn cycle_canceling_mcf(
         }
     }
 
-    // Compute total cost
     let mut total_cost: i64 = 0;
     for (u, nbrs) in g.iter() {
         for (v, data) in nbrs.iter() {
@@ -485,10 +447,6 @@ pub fn cycle_canceling_mcf(
 
     Some((total_cost, flow))
 }
-
-// ---------------------------------------------------------------------------
-// Builder for the spareTSV experiment-scale benchmark
-// ---------------------------------------------------------------------------
 
 /// Build the spareTSV experiment graph (195 nodes, ~1684 edges).
 ///
@@ -544,10 +502,6 @@ pub fn build_spare_tsv_graph() -> (HashMap<usize, HashMap<usize, Edge>>, HashMap
     demands.insert(t, n as i64);
     (g, demands)
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

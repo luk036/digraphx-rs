@@ -132,9 +132,6 @@ where
                 Box::pin(async move {
                     self.pred.clear();
                     let mut found = false;
-                    // Repeat relax until a cycle appears or no more improvements.
-                    // When a cycle is found, yield all cycles in the current
-                    // predecessor graph and stop.
                     while !found && self.relax(dist, &get_weight) {
                         let cycles = crate::find_cycles_in(self.graph, &self.pred);
                         for vtx in cycles {
