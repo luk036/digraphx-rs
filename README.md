@@ -18,15 +18,11 @@ Network optimization algorithms in Rust.
 
 ### 📦 Cargo
 
-- Install the rust toolchain in order to have cargo installed by following
-  [this](https://www.rust-lang.org/tools/install) guide.
-- run `cargo install digraphx-rs`
-
 Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-digraphx-rs = "0.1"
+digraphx-rs = "0.2"
 petgraph = "0.8"
 ```
 
