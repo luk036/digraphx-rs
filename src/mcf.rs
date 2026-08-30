@@ -46,6 +46,14 @@ pub struct ResidualEdge {
     pub forward: bool,
 }
 
+type FlowMap = HashMap<usize, HashMap<usize, i64>>;
+
+/// Current flow value on edge (u, v), defaulting to 0 when absent.
+#[inline]
+fn flow_value(flow: &FlowMap, u: usize, v: usize) -> i64 {
+    flow.get(&u).and_then(|r| r.get(&v)).copied().unwrap_or(0)
+}
+
 /// Find an initial feasible flow by greedily routing supply → demand via BFS.
 fn find_feasible_flow(
     g: &HashMap<usize, HashMap<usize, Edge>>,
@@ -90,7 +98,7 @@ fn find_feasible_flow(
                 let u = window[0];
                 let v = window[1];
                 let cap = g[&u][&v].capacity;
-                let existing = flow.get(&u).and_then(|r| r.get(&v)).copied().unwrap_or(0);
+                let existing = flow_value(&flow, u, v);
                 bottleneck = bottleneck.min(cap - existing);
             }
             bottleneck = bottleneck.min(remaining[&dst]).min(supply_amount);
@@ -145,7 +153,7 @@ fn bfs_path(
                 if visited.contains(&v) {
                     continue;
                 }
-                let existing = flow.get(&u).and_then(|r| r.get(&v)).copied().unwrap_or(0);
+                let existing = flow_value(flow, u, v);
                 if existing < edge.capacity {
                     visited.insert(v);
                     parent.insert(v, u);
@@ -158,44 +166,50 @@ fn bfs_path(
     None
 }
 
+/// Build the residual edges for one original edge (u, v) with the given flow.
+///
+/// Returns at most two candidate residual edges: the forward edge (if the
+/// capacity is not exhausted) and the backward edge (if flow is positive).
+#[inline]
+fn residual_edges_for(u: usize, v: usize, cap: i64, wgt: i64, f: i64) -> Vec<ResidualEdge> {
+    let mut edges = Vec::with_capacity(2);
+    if f < cap {
+        edges.push(ResidualEdge {
+            cost: wgt,
+            capacity: cap - f,
+            orig: (u, v),
+            forward: true,
+        });
+    }
+    if f > 0 {
+        edges.push(ResidualEdge {
+            cost: -wgt,
+            capacity: f,
+            orig: (u, v),
+            forward: false,
+        });
+    }
+    edges
+}
+
 /// Build the full residual graph from current flow.
 fn build_residual(
     g: &HashMap<usize, HashMap<usize, Edge>>,
-    flow: &HashMap<usize, HashMap<usize, i64>>,
+    flow: &FlowMap,
 ) -> HashMap<usize, HashMap<usize, ResidualEdge>> {
     let mut residual: HashMap<usize, HashMap<usize, ResidualEdge>> = HashMap::new();
 
     for (&u, nbrs) in g {
         for (&v, data) in nbrs {
-            let cap = data.capacity;
-            let wgt = data.weight;
-            let f = flow.get(&u).and_then(|r| r.get(&v)).copied().unwrap_or(0);
-
-            // Forward residual edge (can send more flow)
-            if f < cap {
-                let edge = ResidualEdge {
-                    cost: wgt,
-                    capacity: cap - f,
-                    orig: (u, v),
-                    forward: true,
-                };
-                let prev = residual.entry(u).or_default().get(&v);
+            let f = flow_value(flow, u, v);
+            for edge in residual_edges_for(u, v, data.capacity, data.weight, f) {
+                let src = if edge.forward { u } else { v };
+                let prev = residual.entry(src).or_default().get(&if edge.forward { v } else { u });
                 if prev.is_none() || edge.cost < prev.unwrap().cost {
-                    residual.entry(u).or_default().insert(v, edge);
-                }
-            }
-
-            // Backward residual edge (can cancel flow)
-            if f > 0 {
-                let edge = ResidualEdge {
-                    cost: -wgt,
-                    capacity: f,
-                    orig: (u, v),
-                    forward: false,
-                };
-                let prev = residual.entry(v).or_default().get(&u);
-                if prev.is_none() || edge.cost < prev.unwrap().cost {
-                    residual.entry(v).or_default().insert(u, edge);
+                    residual
+                        .entry(src)
+                        .or_default()
+                        .insert(if edge.forward { v } else { u }, edge);
                 }
             }
         }
@@ -208,7 +222,7 @@ fn build_residual(
 fn update_residual_edge(
     residual: &mut HashMap<usize, HashMap<usize, ResidualEdge>>,
     g: &HashMap<usize, HashMap<usize, Edge>>,
-    flow: &HashMap<usize, HashMap<usize, i64>>,
+    flow: &FlowMap,
     u: usize,
     v: usize,
 ) {
@@ -226,27 +240,11 @@ fn update_residual_edge(
     }
 
     if let Some(data) = g.get(&u).and_then(|nbrs| nbrs.get(&v)) {
-        let cap = data.capacity;
-        let wgt = data.weight;
-        let f = flow.get(&u).and_then(|r| r.get(&v)).copied().unwrap_or(0);
-
-        if f < cap {
-            let edge = ResidualEdge {
-                cost: wgt,
-                capacity: cap - f,
-                orig: (u, v),
-                forward: true,
-            };
-            residual.entry(u).or_default().insert(v, edge);
-        }
-        if f > 0 {
-            let edge = ResidualEdge {
-                cost: -wgt,
-                capacity: f,
-                orig: (u, v),
-                forward: false,
-            };
-            residual.entry(v).or_default().insert(u, edge);
+        let f = flow_value(flow, u, v);
+        for edge in residual_edges_for(u, v, data.capacity, data.weight, f) {
+            let src = if edge.forward { u } else { v };
+            let dst = if edge.forward { v } else { u };
+            residual.entry(src).or_default().insert(dst, edge);
         }
     }
 }
@@ -382,7 +380,6 @@ fn find_all_neg_cycles_bf(
 /// # Returns
 ///
 /// `Some((total_cost, flow_dict))` or `None` if the problem is infeasible.
-type FlowMap = HashMap<usize, HashMap<usize, i64>>;
 pub fn cycle_canceling_mcf(
     g: &HashMap<usize, HashMap<usize, Edge>>,
     demands: &HashMap<usize, i64>,
@@ -440,7 +437,7 @@ pub fn cycle_canceling_mcf(
     let mut total_cost: i64 = 0;
     for (u, nbrs) in g.iter() {
         for (v, data) in nbrs.iter() {
-            let f = flow.get(u).and_then(|r| r.get(v)).copied().unwrap_or(0);
+            let f = flow_value(&flow, *u, *v);
             total_cost += f * data.weight;
         }
     }

@@ -43,6 +43,10 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::ops::Add;
 use std::ops::Range;
+use std::ops::Sub;
+use std::pin::Pin;
+
+use genawaiter::sync::Gen;
 
 use crate::map_adapter::MapAdapter;
 
@@ -551,6 +555,185 @@ where
 /// Trait for additive identity.
 pub trait Zero: Sized {
     fn zero() -> Self;
+}
+
+// ---------------------------------------------------------------------------
+// Shared relaxation / cycle-reconstruction cores
+// ---------------------------------------------------------------------------
+//
+// These are the building blocks shared by `NegCycleFinder` (neg_cycle.rs) and
+// `NegCycleFinderQ` (neg_cycle_q.rs).  The Howard iteration skeleton is a
+// Template Method: the relaxation pass and the negativity check are injected
+// as strategy closures, while the relax-to-fixpoint + find-cycle + yield loop
+// lives here once.
+
+/// Predecessor relaxation (Bellman–Ford style) with an `update_ok` gate.
+///
+/// Generic over `U` so the gate is monomorphized (static dispatch) rather than
+/// erased to a trait object — the gate is invoked once per edge in the hot loop.
+pub(crate) fn relax_pred_core<G, F, U>(
+    graph: &G,
+    dist: &mut HashMap<G::Node, G::Weight>,
+    get_weight: &F,
+    update_ok: &U,
+    pred: &mut HashMap<G::Node, (G::Node, G::Weight)>,
+) -> bool
+where
+    G: Graph,
+    G::Weight: Add<Output = G::Weight> + PartialOrd + Copy + Zero,
+    G::Node: Copy + Eq + Hash,
+    F: Fn(&G::Weight) -> G::Weight,
+    U: Fn(&G::Weight, &G::Weight) -> bool,
+{
+    let mut changed = false;
+    for utx in graph.nodes() {
+        let du = *dist.get(&utx).unwrap_or(&G::Weight::zero());
+        for (vtx, w) in graph.neighbors(utx) {
+            let distance = du + get_weight(&w);
+            let dv = *dist.get(&vtx).unwrap_or(&G::Weight::zero());
+            if dv > distance && update_ok(&dv, &distance) {
+                dist.insert(vtx, distance);
+                pred.insert(vtx, (utx, w));
+                changed = true;
+            }
+        }
+    }
+    changed
+}
+
+/// Successor relaxation (reverse Bellman–Ford style) with an `update_ok` gate.
+///
+/// Generic over `U` so the gate is monomorphized (static dispatch).
+pub(crate) fn relax_succ_core<G, F, U>(
+    graph: &G,
+    dist: &mut HashMap<G::Node, G::Weight>,
+    get_weight: &F,
+    update_ok: &U,
+    succ: &mut HashMap<G::Node, (G::Node, G::Weight)>,
+) -> bool
+where
+    G: Graph,
+    G::Weight: Add<Output = G::Weight> + Sub<Output = G::Weight> + PartialOrd + Copy + Zero,
+    G::Node: Copy + Eq + Hash,
+    F: Fn(&G::Weight) -> G::Weight,
+    U: Fn(&G::Weight, &G::Weight) -> bool,
+{
+    let mut changed = false;
+    for utx in graph.nodes() {
+        let du = *dist.get(&utx).unwrap_or(&G::Weight::zero());
+        for (vtx, w) in graph.neighbors(utx) {
+            let distance = *dist.get(&vtx).unwrap_or(&G::Weight::zero()) - get_weight(&w);
+            if du < distance && update_ok(&du, &distance) {
+                dist.insert(utx, distance);
+                succ.insert(utx, (vtx, w));
+                changed = true;
+            }
+        }
+    }
+    changed
+}
+
+/// Reconstruct a cycle from the given point-to map (as edge weights).
+pub(crate) fn cycle_list_from<Node, Weight>(
+    point_to: &HashMap<Node, (Node, Weight)>,
+    handle: Node,
+) -> Vec<Weight>
+where
+    Node: Copy + Eq + Hash,
+    Weight: Copy,
+{
+    let mut vtx = handle;
+    let mut cycle = Vec::new();
+    loop {
+        let &(utx, w) = point_to.get(&vtx).unwrap();
+        cycle.push(w);
+        vtx = utx;
+        if vtx == handle {
+            break;
+        }
+    }
+    cycle
+}
+
+/// Check whether the cycle starting at `handle` in `point_to` is negative.
+pub(crate) fn is_negative_cycle<Node, Weight, F>(
+    point_to: &HashMap<Node, (Node, Weight)>,
+    handle: Node,
+    dist: &HashMap<Node, Weight>,
+    get_weight: &F,
+) -> bool
+where
+    Node: Copy + Eq + Hash,
+    Weight: Add<Output = Weight> + PartialOrd + Copy + Zero,
+    F: Fn(&Weight) -> Weight,
+{
+    let mut vtx = handle;
+    loop {
+        let &(utx, w) = point_to.get(&vtx).unwrap();
+        let dv = *dist.get(&vtx).unwrap_or(&Weight::zero());
+        let du = *dist.get(&utx).unwrap_or(&Weight::zero());
+        if dv > du + get_weight(&w) {
+            return true;
+        }
+        vtx = utx;
+        if vtx == handle {
+            break;
+        }
+    }
+    false
+}
+
+/// Template Method: Howard's policy-iteration skeleton.
+///
+/// Repeatedly relaxes to a fixpoint, finds cycles in the point-to map, and
+/// yields each cycle as a list of edge weights.  The relaxation pass (`relax`)
+/// and the optional negativity check (`check`) are injected as strategies;
+/// both receive the point-to map as a parameter so callers do not capture it.
+/// The `update_ok` gate is baked into the `relax` closure (not passed as a
+/// trait object) so the per-edge call stays statically dispatched.
+#[allow(clippy::type_complexity)]
+pub(crate) fn howard_search<'b, G, F, R, C>(
+    graph: &'b G,
+    dist: &'b mut HashMap<G::Node, G::Weight>,
+    get_weight: F,
+    point_to: &'b mut HashMap<G::Node, (G::Node, G::Weight)>,
+    relax: R,
+    check: C,
+) -> Gen<Vec<G::Weight>, (), Pin<Box<dyn std::future::Future<Output = ()> + 'b>>>
+where
+    G: Graph,
+    G::Weight: Add<Output = G::Weight> + PartialOrd + Copy + Zero,
+    G::Node: Copy + Eq + Hash,
+    F: Fn(&G::Weight) -> G::Weight + 'b,
+    R: Fn(
+            &mut HashMap<G::Node, G::Weight>,
+            &F,
+            &mut HashMap<G::Node, (G::Node, G::Weight)>,
+        ) -> bool
+        + 'b,
+    C: Fn(
+            G::Node,
+            &HashMap<G::Node, G::Weight>,
+            &F,
+            &HashMap<G::Node, (G::Node, G::Weight)>,
+        ) + 'b,
+{
+    Gen::new(
+        |co| -> Pin<Box<dyn std::future::Future<Output = ()> + 'b>> {
+            Box::pin(async move {
+                point_to.clear();
+                let mut found = false;
+                while !found && relax(&mut *dist, &get_weight, &mut *point_to) {
+                    let cycles = crate::find_cycles_in(graph, point_to);
+                    for vtx in cycles {
+                        check(vtx, dist, &get_weight, point_to);
+                        found = true;
+                        co.yield_(cycle_list_from(point_to, vtx)).await;
+                    }
+                }
+            })
+        },
+    )
 }
 
 impl Zero for i32 {

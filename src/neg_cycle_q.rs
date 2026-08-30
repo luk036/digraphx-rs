@@ -101,20 +101,7 @@ where
         F: Fn(&G::Weight) -> G::Weight,
         U: Fn(&G::Weight, &G::Weight) -> bool,
     {
-        let mut changed = false;
-        for utx in self.graph.nodes() {
-            let du = *dist.get(&utx).unwrap_or(&G::Weight::zero());
-            for (vtx, w) in self.graph.neighbors(utx) {
-                let distance = du + get_weight(&w);
-                let dv = *dist.get(&vtx).unwrap_or(&G::Weight::zero());
-                if dv > distance && update_ok(&dv, &distance) {
-                    dist.insert(vtx, distance);
-                    self.pred.insert(vtx, (utx, w));
-                    changed = true;
-                }
-            }
-        }
-        changed
+        crate::relax_pred_core(self.graph, dist, get_weight, update_ok, &mut self.pred)
     }
 
     // ------------------------------------------------------------------
@@ -140,42 +127,7 @@ where
         F: Fn(&G::Weight) -> G::Weight,
         U: Fn(&G::Weight, &G::Weight) -> bool,
     {
-        let mut changed = false;
-        for utx in self.graph.nodes() {
-            let du = *dist.get(&utx).unwrap_or(&G::Weight::zero());
-            for (vtx, w) in self.graph.neighbors(utx) {
-                let distance = *dist.get(&vtx).unwrap_or(&G::Weight::zero()) - get_weight(&w);
-                if du < distance && update_ok(&du, &distance) {
-                    dist.insert(utx, distance);
-                    self.succ.insert(utx, (vtx, w));
-                    changed = true;
-                }
-            }
-        }
-        changed
-    }
-
-    // ------------------------------------------------------------------
-    // Cycle reconstruction
-    // ------------------------------------------------------------------
-
-    /// Reconstruct a cycle from the given mapping (as edge weights).
-    fn cycle_list(
-        &self,
-        handle: G::Node,
-        point_to: &HashMap<G::Node, (G::Node, G::Weight)>,
-    ) -> Vec<G::Weight> {
-        let mut vtx = handle;
-        let mut cycle = Vec::new();
-        loop {
-            let &(utx, w) = point_to.get(&vtx).unwrap();
-            cycle.push(w);
-            vtx = utx;
-            if vtx == handle {
-                break;
-            }
-        }
-        cycle
+        crate::relax_succ_core(self.graph, dist, get_weight, update_ok, &mut self.succ)
     }
 
     // ------------------------------------------------------------------
@@ -198,20 +150,7 @@ where
     where
         F: Fn(&G::Weight) -> G::Weight,
     {
-        let mut vtx = handle;
-        loop {
-            let &(utx, w) = self.pred.get(&vtx).unwrap();
-            let dv = *dist.get(&vtx).unwrap_or(&G::Weight::zero());
-            let du = *dist.get(&utx).unwrap_or(&G::Weight::zero());
-            if dv > du + get_weight(&w) {
-                return true;
-            }
-            vtx = utx;
-            if vtx == handle {
-                break;
-            }
-        }
-        false
+        crate::is_negative_cycle(&self.pred, handle, dist, get_weight)
     }
 
     // ------------------------------------------------------------------
@@ -239,21 +178,20 @@ where
         F: Fn(&G::Weight) -> G::Weight + 'b,
         U: Fn(&G::Weight, &G::Weight) -> bool + 'b,
     {
-        Gen::new(
-            |co| -> Pin<Box<dyn std::future::Future<Output = ()> + 'b>> {
-                Box::pin(async move {
-                    self.pred.clear();
-                    let mut found = false;
-                    while !found && self.relax_pred(dist, &get_weight, &update_ok) {
-                        for &vtx in &crate::find_cycles_in(self.graph, &self.pred) {
-                            debug_assert!(self.is_negative(vtx, dist, &get_weight));
-                            found = true;
-                            co.yield_(self.cycle_list(vtx, &self.pred)).await;
-                        }
-                    }
-                })
-            },
-        )
+        let graph = self.graph;  // Copy: capture the graph ref, not `self`
+        // Gate baked into the closure: predecessor relaxation with the user's gate.
+        let relax = move |d: &mut HashMap<G::Node, G::Weight>,
+                          w: &F,
+                          p: &mut HashMap<G::Node, (G::Node, G::Weight)>| {
+            crate::relax_pred_core(graph, d, w, &update_ok, p)
+        };
+        let check = |vtx: G::Node,
+                     d: &HashMap<G::Node, G::Weight>,
+                     w: &F,
+                     p: &HashMap<G::Node, (G::Node, G::Weight)>| {
+            debug_assert!(crate::is_negative_cycle(p, vtx, d, w));
+        };
+        crate::howard_search(self.graph, dist, get_weight, &mut self.pred, relax, check)
     }
 
     // ------------------------------------------------------------------
@@ -281,20 +219,18 @@ where
         F: Fn(&G::Weight) -> G::Weight + 'b,
         U: Fn(&G::Weight, &G::Weight) -> bool + 'b,
     {
-        Gen::new(
-            |co| -> Pin<Box<dyn std::future::Future<Output = ()> + 'b>> {
-                Box::pin(async move {
-                    self.succ.clear();
-                    let mut found = false;
-                    while !found && self.relax_succ(dist, &get_weight, &update_ok) {
-                        for &vtx in &crate::find_cycles_in(self.graph, &self.succ) {
-                            found = true;
-                            co.yield_(self.cycle_list(vtx, &self.succ)).await;
-                        }
-                    }
-                })
-            },
-        )
+        let graph = self.graph;  // Copy: capture the graph ref, not `self`
+        // Gate baked into the closure: successor relaxation with the user's gate.
+        let relax = move |d: &mut HashMap<G::Node, G::Weight>,
+                          w: &F,
+                          p: &mut HashMap<G::Node, (G::Node, G::Weight)>| {
+            crate::relax_succ_core(graph, d, w, &update_ok, p)
+        };
+        let check = |_: G::Node,
+                     _: &HashMap<G::Node, G::Weight>,
+                     _: &F,
+                     _: &HashMap<G::Node, (G::Node, G::Weight)>| {};
+        crate::howard_search(self.graph, dist, get_weight, &mut self.succ, relax, check)
     }
 }
 

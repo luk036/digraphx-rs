@@ -65,35 +65,7 @@ where
     where
         F: Fn(&G::Weight) -> G::Weight,
     {
-        let mut changed = false;
-        for utx in self.graph.nodes() {
-            let du = *dist.get(&utx).unwrap_or(&G::Weight::zero());
-            for (vtx, w) in self.graph.neighbors(utx) {
-                let distance = du + get_weight(&w);
-                let dv = *dist.get(&vtx).unwrap_or(&G::Weight::zero());
-                if dv > distance {
-                    dist.insert(vtx, distance);
-                    self.pred.insert(vtx, (utx, w));
-                    changed = true;
-                }
-            }
-        }
-        changed
-    }
-
-    /// Reconstruct the cycle edges starting from `handle`.
-    fn cycle_list(&self, handle: G::Node) -> Vec<G::Weight> {
-        let mut vtx = handle;
-        let mut cycle = Vec::new();
-        loop {
-            let &(utx, w) = self.pred.get(&vtx).unwrap();
-            cycle.push(w);
-            vtx = utx;
-            if vtx == handle {
-                break;
-            }
-        }
-        cycle
+        crate::relax_pred_core(self.graph, dist, get_weight, &|_, _| true, &mut self.pred)
     }
 
     /// Howard's algorithm: find negative cycles using policy iteration.
@@ -127,21 +99,18 @@ where
     where
         F: Fn(&G::Weight) -> G::Weight + 'b,
     {
-        Gen::new(
-            |co| -> Pin<Box<dyn std::future::Future<Output = ()> + 'b>> {
-                Box::pin(async move {
-                    self.pred.clear();
-                    let mut found = false;
-                    while !found && self.relax(dist, &get_weight) {
-                        let cycles = crate::find_cycles_in(self.graph, &self.pred);
-                        for vtx in cycles {
-                            found = true;
-                            co.yield_(self.cycle_list(vtx)).await;
-                        }
-                    }
-                })
-            },
-        )
+        let graph = self.graph;  // Copy: capture the graph ref, not `self`
+        // Gate baked into the closure: unconstrained → always allow updates.
+        let relax = |d: &mut HashMap<G::Node, G::Weight>,
+                     w: &F,
+                     p: &mut HashMap<G::Node, (G::Node, G::Weight)>| {
+            crate::relax_pred_core(graph, d, w, &|_, _| true, p)
+        };
+        let check = |_: G::Node,
+                     _: &HashMap<G::Node, G::Weight>,
+                     _: &F,
+                     _: &HashMap<G::Node, (G::Node, G::Weight)>| {};
+        crate::howard_search(self.graph, dist, get_weight, &mut self.pred, relax, check)
     }
 }
 
