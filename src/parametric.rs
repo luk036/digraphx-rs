@@ -150,9 +150,11 @@ mod tests {
     struct MinCycleRatio;
 
     impl ParametricAPI<i32> for MinCycleRatio {
+        #[inline]
         fn distance(&self, r: &i32, w: &i32) -> i32 {
             *w - *r
         }
+        #[inline]
         fn zero_cancel(&self, cycle: &[i32]) -> i32 {
             cycle.iter().sum::<i32>() / cycle.len() as i32
         }

@@ -91,6 +91,7 @@ where
     /// AND $\text{update\_ok}(d_{\text{old}}, d_{\text{new}})$ is `true`.
     ///
     /// The `get_weight` closure receives a reference to the stored edge data.
+    #[inline]
     pub fn relax_pred<F, U>(
         &mut self,
         dist: &mut HashMap<G::Node, G::Weight>,
@@ -117,6 +118,7 @@ where
     /// AND $\text{update\_ok}(d_{\text{old}}, d_{\text{new}})$ is `true`.
     ///
     /// The `get_weight` closure receives a reference to the stored edge data.
+    #[inline]
     pub fn relax_succ<F, U>(
         &mut self,
         dist: &mut HashMap<G::Node, G::Weight>,
@@ -141,6 +143,7 @@ where
     /// $$ d\[v\] > d\[u\] + w(u,v) $$
     ///
     /// The `get_weight` closure receives a reference to the stored edge data.
+    #[inline]
     pub fn is_negative<F>(
         &self,
         handle: G::Node,
@@ -178,8 +181,8 @@ where
         F: Fn(&G::Weight) -> G::Weight + 'b,
         U: Fn(&G::Weight, &G::Weight) -> bool + 'b,
     {
-        let graph = self.graph;  // Copy: capture the graph ref, not `self`
-        // Gate baked into the closure: predecessor relaxation with the user's gate.
+        let graph = self.graph; // Copy: capture the graph ref, not `self`
+                                // Gate baked into the closure: predecessor relaxation with the user's gate.
         let relax = move |d: &mut HashMap<G::Node, G::Weight>,
                           w: &F,
                           p: &mut HashMap<G::Node, (G::Node, G::Weight)>| {
@@ -219,8 +222,8 @@ where
         F: Fn(&G::Weight) -> G::Weight + 'b,
         U: Fn(&G::Weight, &G::Weight) -> bool + 'b,
     {
-        let graph = self.graph;  // Copy: capture the graph ref, not `self`
-        // Gate baked into the closure: successor relaxation with the user's gate.
+        let graph = self.graph; // Copy: capture the graph ref, not `self`
+                                // Gate baked into the closure: successor relaxation with the user's gate.
         let relax = move |d: &mut HashMap<G::Node, G::Weight>,
                           w: &F,
                           p: &mut HashMap<G::Node, (G::Node, G::Weight)>| {

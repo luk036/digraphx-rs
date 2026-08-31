@@ -111,6 +111,7 @@ pub fn try_init_logger_with_filter(filter: &str) -> Result<(), log::SetLoggerErr
 ///
 /// `true` if the logger is active, `false` otherwise.
 #[cfg(feature = "std")]
+#[inline]
 pub fn is_logger_initialized() -> bool {
     LOGGER_INITIALIZED.get().is_some()
 }

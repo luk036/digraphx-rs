@@ -32,6 +32,7 @@ pub struct Edge {
 }
 
 impl Edge {
+    #[inline]
     pub fn new(weight: i64, capacity: i64) -> Self {
         Self { weight, capacity }
     }
@@ -204,7 +205,10 @@ fn build_residual(
             let f = flow_value(flow, u, v);
             for edge in residual_edges_for(u, v, data.capacity, data.weight, f) {
                 let src = if edge.forward { u } else { v };
-                let prev = residual.entry(src).or_default().get(&if edge.forward { v } else { u });
+                let prev = residual
+                    .entry(src)
+                    .or_default()
+                    .get(&if edge.forward { v } else { u });
                 if prev.is_none() || edge.cost < prev.unwrap().cost {
                     residual
                         .entry(src)

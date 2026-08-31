@@ -42,6 +42,7 @@ where
     G::Node: Copy + Eq + Hash,
 {
     /// Return a reference to the underlying graph.
+    #[inline]
     pub fn graph(&self) -> &'a G {
         self.graph
     }
@@ -61,6 +62,7 @@ where
     /// $$ d\[v\] > d\[u\] + w(u,v) $$
     ///
     /// and updates the predecessor map if so. Returns `true` if any distance was changed.
+    #[inline]
     pub fn relax<F>(&mut self, dist: &mut HashMap<G::Node, G::Weight>, get_weight: &F) -> bool
     where
         F: Fn(&G::Weight) -> G::Weight,
@@ -99,8 +101,8 @@ where
     where
         F: Fn(&G::Weight) -> G::Weight + 'b,
     {
-        let graph = self.graph;  // Copy: capture the graph ref, not `self`
-        // Gate baked into the closure: unconstrained → always allow updates.
+        let graph = self.graph; // Copy: capture the graph ref, not `self`
+                                // Gate baked into the closure: unconstrained → always allow updates.
         let relax = |d: &mut HashMap<G::Node, G::Weight>,
                      w: &F,
                      p: &mut HashMap<G::Node, (G::Node, G::Weight)>| {
@@ -120,6 +122,7 @@ mod tests {
     use crate::graph_from_edges;
     use std::collections::HashMap;
 
+    #[inline]
     fn has_neg_cycle<G, F>(
         ncf: &mut NegCycleFinder<'_, G>,
         dist: &mut HashMap<G::Node, G::Weight>,

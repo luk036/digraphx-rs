@@ -254,6 +254,7 @@ where
         N: 'a,
         W: 'a;
 
+    #[inline]
     fn nodes(&self) -> Self::Nodes<'_> {
         self.keys().copied()
     }
@@ -265,6 +266,7 @@ where
         }
     }
 
+    #[inline]
     fn num_nodes(&self) -> usize {
         self.len()
     }
@@ -294,6 +296,7 @@ where
         N: 'a,
         W: 'a;
 
+    #[inline]
     fn nodes(&self) -> Self::Nodes<'_> {
         self.keys().copied()
     }
@@ -305,6 +308,7 @@ where
         }
     }
 
+    #[inline]
     fn num_nodes(&self) -> usize {
         self.len()
     }
@@ -369,6 +373,7 @@ where
     where
         W: 'a;
 
+    #[inline]
     fn nodes(&self) -> Self::Nodes<'_> {
         0..self.len()
     }
@@ -381,6 +386,7 @@ where
             .copied()
     }
 
+    #[inline]
     fn num_nodes(&self) -> usize {
         self.len()
     }
@@ -410,6 +416,7 @@ where
     where
         W: 'a;
 
+    #[inline]
     fn nodes(&self) -> Self::Nodes<'_> {
         0..self.len()
     }
@@ -423,6 +430,7 @@ where
             .copied()
     }
 
+    #[inline]
     fn num_nodes(&self) -> usize {
         self.len()
     }
@@ -476,6 +484,7 @@ pub mod petgraph_adapter {
         where
             PetGraph<'a, V, E>: 'b;
 
+        #[inline]
         fn nodes(&self) -> Self::Nodes<'_> {
             self.0.node_indices()
         }
@@ -486,6 +495,7 @@ pub mod petgraph_adapter {
             }
         }
 
+        #[inline]
         fn num_nodes(&self) -> usize {
             self.0.node_count()
         }
@@ -501,6 +511,7 @@ pub mod petgraph_adapter {
         E: Copy,
     {
         type Item = (NodeIndex, E);
+        #[inline]
         fn next(&mut self) -> Option<Self::Item> {
             self.iter.next().map(|e| (e.target(), *e.weight()))
         }
@@ -711,12 +722,7 @@ where
             &mut HashMap<G::Node, (G::Node, G::Weight)>,
         ) -> bool
         + 'b,
-    C: Fn(
-            G::Node,
-            &HashMap<G::Node, G::Weight>,
-            &F,
-            &HashMap<G::Node, (G::Node, G::Weight)>,
-        ) + 'b,
+    C: Fn(G::Node, &HashMap<G::Node, G::Weight>, &F, &HashMap<G::Node, (G::Node, G::Weight)>) + 'b,
 {
     Gen::new(
         |co| -> Pin<Box<dyn std::future::Future<Output = ()> + 'b>> {
@@ -737,16 +743,19 @@ where
 }
 
 impl Zero for i32 {
+    #[inline]
     fn zero() -> Self {
         0
     }
 }
 impl Zero for f32 {
+    #[inline]
     fn zero() -> Self {
         0.0
     }
 }
 impl Zero for f64 {
+    #[inline]
     fn zero() -> Self {
         0.0
     }
