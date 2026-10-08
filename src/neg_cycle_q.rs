@@ -102,7 +102,15 @@ where
         F: Fn(&G::Weight) -> G::Weight,
         U: Fn(&G::Weight, &G::Weight) -> bool,
     {
-        crate::relax_pred_core(self.graph, dist, get_weight, update_ok, &mut self.pred)
+        let mut cache = crate::WeightCache::new();
+        crate::relax_pred_core(
+            self.graph,
+            dist,
+            get_weight,
+            update_ok,
+            &mut self.pred,
+            &mut cache,
+        )
     }
 
     // ------------------------------------------------------------------
@@ -129,7 +137,15 @@ where
         F: Fn(&G::Weight) -> G::Weight,
         U: Fn(&G::Weight, &G::Weight) -> bool,
     {
-        crate::relax_succ_core(self.graph, dist, get_weight, update_ok, &mut self.succ)
+        let mut cache = crate::WeightCache::new();
+        crate::relax_succ_core(
+            self.graph,
+            dist,
+            get_weight,
+            update_ok,
+            &mut self.succ,
+            &mut cache,
+        )
     }
 
     // ------------------------------------------------------------------
@@ -182,11 +198,13 @@ where
         U: Fn(&G::Weight, &G::Weight) -> bool + 'b,
     {
         let graph = self.graph; // Copy: capture the graph ref, not `self`
-                                // Gate baked into the closure: predecessor relaxation with the user's gate.
+        let mut cache = crate::WeightCache::new();
+        // Gate baked into the closure: predecessor relaxation with the user's gate.
+        // The cache is owned by the closure so weights survive across passes.
         let relax = move |d: &mut HashMap<G::Node, G::Weight>,
                           w: &F,
                           p: &mut HashMap<G::Node, (G::Node, G::Weight)>| {
-            crate::relax_pred_core(graph, d, w, &update_ok, p)
+            crate::relax_pred_core(graph, d, w, &update_ok, p, &mut cache)
         };
         let check = |vtx: G::Node,
                      d: &HashMap<G::Node, G::Weight>,
@@ -223,11 +241,13 @@ where
         U: Fn(&G::Weight, &G::Weight) -> bool + 'b,
     {
         let graph = self.graph; // Copy: capture the graph ref, not `self`
-                                // Gate baked into the closure: successor relaxation with the user's gate.
+        let mut cache = crate::WeightCache::new();
+        // Gate baked into the closure: successor relaxation with the user's gate.
+        // The cache is owned by the closure so weights survive across passes.
         let relax = move |d: &mut HashMap<G::Node, G::Weight>,
                           w: &F,
                           p: &mut HashMap<G::Node, (G::Node, G::Weight)>| {
-            crate::relax_succ_core(graph, d, w, &update_ok, p)
+            crate::relax_succ_core(graph, d, w, &update_ok, p, &mut cache)
         };
         let check = |_: G::Node,
                      _: &HashMap<G::Node, G::Weight>,

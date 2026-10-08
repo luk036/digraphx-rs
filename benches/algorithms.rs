@@ -10,6 +10,7 @@ use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, Criterion};
 
 use digraphx_rs::graph_from_edges;
+use digraphx_rs::graph_from_edges_array;
 use digraphx_rs::mcf::{cycle_canceling_mcf, Edge};
 use digraphx_rs::neg_cycle::NegCycleFinder;
 use digraphx_rs::parametric::{MaxParametricSolver, ParametricAPI};
@@ -99,6 +100,42 @@ fn bench_howard_ratio(c: &mut Criterion) {
             )
         })
     });
+}
+
+// ---------------------------------------------------------------------------
+// Multi-pass weight-cache benchmark
+// ---------------------------------------------------------------------------
+
+fn bench_neg_cycle_cache_multipass(c: &mut Criterion) {
+    // A reverse chain where relaxation propagates one hop per pass, so the
+    // search needs O(n) passes - the regime where caching edge weights pays
+    // off.  Edge data is an index into a weight table, so `get_weight` is a
+    // genuine (non-trivial) lookup rather than an identity projection.
+    let mut group = c.benchmark_group("neg_cycle_cache_multipass");
+    for &n in &[500usize, 1000, 2000] {
+        let mut edges: Vec<(usize, usize, i32)> = Vec::new();
+        let mut table: HashMap<i32, i32> = HashMap::new();
+        for i in 1..n {
+            let id = table.len() as i32;
+            edges.push((i, i - 1, id));
+            table.insert(id, 1);
+        }
+        let id = table.len() as i32;
+        edges.push((0, n - 1, id));
+        table.insert(id, -(n as i32));
+        let graph = graph_from_edges_array(&edges);
+        let get_weight = |idx: &i32| table[idx];
+        let base_dist: HashMap<usize, i32> = (0..n).map(|i| (i, 0)).collect();
+
+        group.bench_with_input(format!("n={n}"), &n, |b, _| {
+            b.iter(|| {
+                let mut ncf = NegCycleFinder::new(black_box(&graph));
+                let mut dist = base_dist.clone();
+                black_box(ncf.howard(&mut dist, get_weight).into_iter().count())
+            })
+        });
+    }
+    group.finish();
 }
 
 // ---------------------------------------------------------------------------
@@ -239,6 +276,7 @@ criterion_group!(
     bench_neg_cycle_no_cycle,
     bench_neg_cycle_medium,
     bench_howard_ratio,
+    bench_neg_cycle_cache_multipass,
     bench_parametric_solver,
     bench_mcf_chain_small,
     bench_mcf_chain_medium,

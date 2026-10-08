@@ -536,26 +536,35 @@ where
     G::Node: Copy + Eq + Hash,
     G::Weight: Copy,
 {
+    use std::collections::hash_map::Entry;
+
     let mut result = Vec::new();
     let mut visited: HashMap<G::Node, G::Node> = HashMap::new();
     for vtx in graph.nodes() {
-        if visited.contains_key(&vtx) {
-            continue;
+        // Single probe: mark the DFS root and skip if it was already visited.
+        match visited.entry(vtx) {
+            Entry::Occupied(_) => continue,
+            Entry::Vacant(e) => {
+                e.insert(vtx);
+            }
         }
         let mut utx = vtx;
-        visited.insert(utx, vtx);
         loop {
             match point_to.get(&utx) {
                 None => break,
                 Some(&(prev, _)) => {
                     utx = prev;
-                    if let Some(&root) = visited.get(&utx) {
-                        if root == vtx {
-                            result.push(utx);
+                    match visited.entry(utx) {
+                        Entry::Occupied(e) => {
+                            if *e.get() == vtx {
+                                result.push(utx);
+                            }
+                            break;
                         }
-                        break;
+                        Entry::Vacant(e) => {
+                            e.insert(vtx);
+                        }
                     }
-                    visited.insert(utx, vtx);
                 }
             }
         }
@@ -578,16 +587,45 @@ pub trait Zero: Sized {
 // as strategy closures, while the relax-to-fixpoint + find-cycle + yield loop
 // lives here once.
 
-/// Predecessor relaxation (Bellman–Ford style) with an `update_ok` gate.
+/// Lazily-built cache of edge weights for one Howard search.
 ///
-/// Generic over `U` so the gate is monomorphized (static dispatch) rather than
-/// erased to a trait object — the gate is invoked once per edge in the hot loop.
-pub(crate) fn relax_pred_core<G, F, U>(
+/// The parameter — and therefore every edge weight — is fixed for the whole
+/// search, so the weights only need evaluating once.  The cache is
+/// materialised during the second relaxation pass (a single-pass search
+/// allocates nothing) and reused from the third pass onward.
+pub(crate) struct WeightCache<W> {
+    weights: Vec<W>,
+    pass: usize,
+}
+
+impl<W> WeightCache<W> {
+    #[inline]
+    pub(crate) fn new() -> Self {
+        WeightCache {
+            weights: Vec::new(),
+            pass: 0,
+        }
+    }
+}
+
+/// Weight-source selector for [`relax_pred_pass`] / [`relax_succ_pass`].
+///
+/// `Plain` is the original branch-free hot loop; `Build` stores each weight as
+/// it is computed; `Use` reads the stored weights.  Because the selector is a
+/// `const` parameter, the single-pass case compiles down to the original loop.
+pub(crate) const RELAX_PLAIN: u8 = 0;
+pub(crate) const RELAX_BUILD: u8 = 1;
+pub(crate) const RELAX_USE: u8 = 2;
+
+/// One predecessor relaxation pass over the graph.
+#[inline]
+fn relax_pred_pass<const MODE: u8, G, F, U>(
     graph: &G,
     dist: &mut HashMap<G::Node, G::Weight>,
     get_weight: &F,
     update_ok: &U,
     pred: &mut HashMap<G::Node, (G::Node, G::Weight)>,
+    cache: &mut WeightCache<G::Weight>,
 ) -> bool
 where
     G: Graph,
@@ -596,11 +634,22 @@ where
     F: Fn(&G::Weight) -> G::Weight,
     U: Fn(&G::Weight, &G::Weight) -> bool,
 {
+    let mut idx = 0usize;
     let mut changed = false;
     for utx in graph.nodes() {
         let du = *dist.get(&utx).unwrap_or(&G::Weight::zero());
         for (vtx, w) in graph.neighbors(utx) {
-            let distance = du + get_weight(&w);
+            let weight = if MODE == RELAX_USE {
+                cache.weights[idx]
+            } else {
+                let value = get_weight(&w);
+                if MODE == RELAX_BUILD {
+                    cache.weights.push(value);
+                }
+                value
+            };
+            idx += 1;
+            let distance = du + weight;
             let dv = *dist.get(&vtx).unwrap_or(&G::Weight::zero());
             if dv > distance && update_ok(&dv, &distance) {
                 dist.insert(vtx, distance);
@@ -612,15 +661,51 @@ where
     changed
 }
 
-/// Successor relaxation (reverse Bellman–Ford style) with an `update_ok` gate.
+/// Predecessor relaxation (Bellman–Ford style) with an `update_ok` gate.
 ///
-/// Generic over `U` so the gate is monomorphized (static dispatch).
-pub(crate) fn relax_succ_core<G, F, U>(
+/// Generic over `U` so the gate is monomorphized (static dispatch) rather than
+/// erased to a trait object — the gate is invoked once per edge in the hot loop.
+///
+/// `cache` reuses the weights computed on earlier passes; pass a fresh
+/// [`WeightCache`] for a one-shot relaxation.
+pub(crate) fn relax_pred_core<G, F, U>(
+    graph: &G,
+    dist: &mut HashMap<G::Node, G::Weight>,
+    get_weight: &F,
+    update_ok: &U,
+    pred: &mut HashMap<G::Node, (G::Node, G::Weight)>,
+    cache: &mut WeightCache<G::Weight>,
+) -> bool
+where
+    G: Graph,
+    G::Weight: Add<Output = G::Weight> + PartialOrd + Copy + Zero,
+    G::Node: Copy + Eq + Hash,
+    F: Fn(&G::Weight) -> G::Weight,
+    U: Fn(&G::Weight, &G::Weight) -> bool,
+{
+    match cache.pass {
+        0 => {
+            cache.pass = 1;
+            relax_pred_pass::<RELAX_PLAIN, G, F, U>(graph, dist, get_weight, update_ok, pred, cache)
+        }
+        1 => {
+            cache.pass = 2;
+            cache.weights.clear();
+            relax_pred_pass::<RELAX_BUILD, G, F, U>(graph, dist, get_weight, update_ok, pred, cache)
+        }
+        _ => relax_pred_pass::<RELAX_USE, G, F, U>(graph, dist, get_weight, update_ok, pred, cache),
+    }
+}
+
+/// One successor relaxation pass over the graph.
+#[inline]
+fn relax_succ_pass<const MODE: u8, G, F, U>(
     graph: &G,
     dist: &mut HashMap<G::Node, G::Weight>,
     get_weight: &F,
     update_ok: &U,
     succ: &mut HashMap<G::Node, (G::Node, G::Weight)>,
+    cache: &mut WeightCache<G::Weight>,
 ) -> bool
 where
     G: Graph,
@@ -629,11 +714,22 @@ where
     F: Fn(&G::Weight) -> G::Weight,
     U: Fn(&G::Weight, &G::Weight) -> bool,
 {
+    let mut idx = 0usize;
     let mut changed = false;
     for utx in graph.nodes() {
         let du = *dist.get(&utx).unwrap_or(&G::Weight::zero());
         for (vtx, w) in graph.neighbors(utx) {
-            let distance = *dist.get(&vtx).unwrap_or(&G::Weight::zero()) - get_weight(&w);
+            let weight = if MODE == RELAX_USE {
+                cache.weights[idx]
+            } else {
+                let value = get_weight(&w);
+                if MODE == RELAX_BUILD {
+                    cache.weights.push(value);
+                }
+                value
+            };
+            idx += 1;
+            let distance = *dist.get(&vtx).unwrap_or(&G::Weight::zero()) - weight;
             if du < distance && update_ok(&du, &distance) {
                 dist.insert(utx, distance);
                 succ.insert(utx, (vtx, w));
@@ -642,6 +738,41 @@ where
         }
     }
     changed
+}
+
+/// Successor relaxation (reverse Bellman–Ford style) with an `update_ok` gate.
+///
+/// Generic over `U` so the gate is monomorphized (static dispatch).
+///
+/// `cache` reuses the weights computed on earlier passes; pass a fresh
+/// [`WeightCache`] for a one-shot relaxation.
+pub(crate) fn relax_succ_core<G, F, U>(
+    graph: &G,
+    dist: &mut HashMap<G::Node, G::Weight>,
+    get_weight: &F,
+    update_ok: &U,
+    succ: &mut HashMap<G::Node, (G::Node, G::Weight)>,
+    cache: &mut WeightCache<G::Weight>,
+) -> bool
+where
+    G: Graph,
+    G::Weight: Add<Output = G::Weight> + Sub<Output = G::Weight> + PartialOrd + Copy + Zero,
+    G::Node: Copy + Eq + Hash,
+    F: Fn(&G::Weight) -> G::Weight,
+    U: Fn(&G::Weight, &G::Weight) -> bool,
+{
+    match cache.pass {
+        0 => {
+            cache.pass = 1;
+            relax_succ_pass::<RELAX_PLAIN, G, F, U>(graph, dist, get_weight, update_ok, succ, cache)
+        }
+        1 => {
+            cache.pass = 2;
+            cache.weights.clear();
+            relax_succ_pass::<RELAX_BUILD, G, F, U>(graph, dist, get_weight, update_ok, succ, cache)
+        }
+        _ => relax_succ_pass::<RELAX_USE, G, F, U>(graph, dist, get_weight, update_ok, succ, cache),
+    }
 }
 
 /// Reconstruct a cycle from the given point-to map (as edge weights).
@@ -708,7 +839,7 @@ pub(crate) fn howard_search<'b, G, F, R, C>(
     dist: &'b mut HashMap<G::Node, G::Weight>,
     get_weight: F,
     point_to: &'b mut HashMap<G::Node, (G::Node, G::Weight)>,
-    relax: R,
+    mut relax: R,
     check: C,
 ) -> Gen<Vec<G::Weight>, (), Pin<Box<dyn std::future::Future<Output = ()> + 'b>>>
 where
@@ -716,7 +847,7 @@ where
     G::Weight: Add<Output = G::Weight> + PartialOrd + Copy + Zero,
     G::Node: Copy + Eq + Hash,
     F: Fn(&G::Weight) -> G::Weight + 'b,
-    R: Fn(
+    R: FnMut(
             &mut HashMap<G::Node, G::Weight>,
             &F,
             &mut HashMap<G::Node, (G::Node, G::Weight)>,

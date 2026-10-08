@@ -67,7 +67,15 @@ where
     where
         F: Fn(&G::Weight) -> G::Weight,
     {
-        crate::relax_pred_core(self.graph, dist, get_weight, &|_, _| true, &mut self.pred)
+        let mut cache = crate::WeightCache::new();
+        crate::relax_pred_core(
+            self.graph,
+            dist,
+            get_weight,
+            &|_, _| true,
+            &mut self.pred,
+            &mut cache,
+        )
     }
 
     /// Howard's algorithm: find negative cycles using policy iteration.
@@ -102,11 +110,13 @@ where
         F: Fn(&G::Weight) -> G::Weight + 'b,
     {
         let graph = self.graph; // Copy: capture the graph ref, not `self`
-                                // Gate baked into the closure: unconstrained → always allow updates.
-        let relax = |d: &mut HashMap<G::Node, G::Weight>,
-                     w: &F,
-                     p: &mut HashMap<G::Node, (G::Node, G::Weight)>| {
-            crate::relax_pred_core(graph, d, w, &|_, _| true, p)
+        let mut cache = crate::WeightCache::new();
+        // Gate baked into the closure: unconstrained → always allow updates.
+        // The cache is owned by the closure so weights survive across passes.
+        let relax = move |d: &mut HashMap<G::Node, G::Weight>,
+                          w: &F,
+                          p: &mut HashMap<G::Node, (G::Node, G::Weight)>| {
+            crate::relax_pred_core(graph, d, w, &|_, _| true, p, &mut cache)
         };
         let check = |_: G::Node,
                      _: &HashMap<G::Node, G::Weight>,
@@ -219,5 +229,26 @@ mod tests {
         let mut dist: HashMap<i32, i32> = [(0, 0), (1, 0), (2, 0), (3, 0)].into();
         let cycles: Vec<_> = ncf.howard(&mut dist, |w| *w).into_iter().collect();
         assert!(!cycles.is_empty());
+    }
+
+    #[test]
+    fn test_multipass_cached_weights() {
+        // A reverse chain whose long negative cycle only surfaces after many
+        // relaxation passes, so the cached-weight relaxation path is exercised.
+        let n: usize = 128;
+        let mut edges: Vec<(usize, usize, f64)> = Vec::new();
+        for i in 1..n {
+            edges.push((i, i - 1, 1.0));
+        }
+        edges.push((0, n - 1, -(n as f64)));
+        let graph = crate::graph_from_edges_array(&edges);
+        let mut ncf = NegCycleFinder::new(&graph);
+        let mut dist: HashMap<usize, f64> = (0..n).map(|i| (i, 0.0)).collect();
+        let cycles: Vec<_> = ncf.howard(&mut dist, |w| *w).into_iter().collect();
+        assert!(!cycles.is_empty());
+        for cycle in &cycles {
+            let total: f64 = cycle.iter().sum();
+            assert!(total < 0.0);
+        }
     }
 }
