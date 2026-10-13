@@ -28,6 +28,7 @@
 //! assert!(has_cycle);
 //! ```
 
+pub mod css;
 pub mod map_adapter;
 pub mod mcf;
 pub mod neg_cycle;
@@ -907,6 +908,8 @@ impl<T: num::Integer + Clone> Zero for num::rational::Ratio<T> {
 pub use neg_cycle::NegCycleFinder;
 pub use neg_cycle_q::NegCycleFinderQ;
 pub use parametric::{MaxParametricSolver, ParametricAPI};
+
+pub use css::{css_ratio, min_clock_period, CssWeight};
 
 /// Cycle type: a sequence of node IDs.
 pub type Cycle<N> = Vec<N>;
