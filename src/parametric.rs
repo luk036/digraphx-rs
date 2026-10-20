@@ -44,6 +44,50 @@ pub trait ParametricAPI<W> {
     fn zero_cancel(&self, cycle: &[W]) -> W;
 }
 
+/// Run the parametric search until no cycle improves the ratio.
+///
+/// A negative cycle at the current ratio proposes a new ratio through
+/// [`ParametricAPI::zero_cancel`]; the loop keeps the smallest proposal and
+/// repeats with that ratio until no cycle improves it.  `prepare` runs before
+/// every round so a caller can reset the distance map when its weight type
+/// needs a clean start.
+pub(crate) fn parametric_search<G, P, Prep>(
+    ncf: &mut NegCycleFinder<'_, G>,
+    omega: &P,
+    dist: &mut HashMap<G::Node, G::Weight>,
+    ratio: &mut G::Weight,
+    mut prepare: Prep,
+) -> Vec<G::Weight>
+where
+    G: Graph,
+    G::Weight: Add<Output = G::Weight> + PartialOrd + Copy + Zero,
+    G::Node: Copy + Eq + Hash,
+    P: ParametricAPI<G::Weight>,
+    Prep: FnMut(&mut HashMap<G::Node, G::Weight>),
+{
+    let mut best_cycle = Vec::new();
+    let mut ratio_best = *ratio;
+
+    loop {
+        prepare(dist);
+        let current = ratio_best;
+        let get_weight = |w: &G::Weight| omega.distance(&current, w);
+        for ci in ncf.howard(dist, get_weight) {
+            let ri = omega.zero_cancel(&ci);
+            if ri < ratio_best {
+                ratio_best = ri;
+                best_cycle = ci;
+            }
+        }
+        if ratio_best >= *ratio {
+            break;
+        }
+        *ratio = ratio_best;
+    }
+
+    best_cycle
+}
+
 /// Maximum parametric solver.
 ///
 /// Solves the parametric network problem:
@@ -115,30 +159,12 @@ where
         dist: &mut HashMap<G::Node, G::Weight>,
         ratio: &mut G::Weight,
     ) -> Vec<G::Weight> {
-        let mut best_cycle = Vec::new();
-
-        loop {
-            // Reset distances to zero
-            for d in dist.values_mut() {
-                *d = G::Weight::zero();
+        let reset = |d: &mut HashMap<G::Node, G::Weight>| {
+            for value in d.values_mut() {
+                *value = G::Weight::zero();
             }
-
-            let current_ratio = *ratio;
-            let get_weight = |w: &G::Weight| self.omega.distance(&current_ratio, w);
-            let mut found_better = false;
-            for ci in self.ncf.howard(dist, get_weight) {
-                let ri = self.omega.zero_cancel(&ci);
-                if ri < *ratio {
-                    best_cycle = ci;
-                    *ratio = ri;
-                    found_better = true;
-                }
-            }
-            if !found_better {
-                break;
-            }
-        }
-        best_cycle
+        };
+        parametric_search(&mut self.ncf, &self.omega, dist, ratio, reset)
     }
 }
 

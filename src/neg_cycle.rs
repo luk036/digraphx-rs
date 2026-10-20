@@ -118,10 +118,12 @@ where
                           p: &mut HashMap<G::Node, (G::Node, G::Weight)>| {
             crate::relax_pred_core(graph, d, w, &|_, _| true, p, &mut cache)
         };
-        let check = |_: G::Node,
-                     _: &HashMap<G::Node, G::Weight>,
-                     _: &F,
-                     _: &HashMap<G::Node, (G::Node, G::Weight)>| {};
+        let check = |vtx: G::Node,
+                     d: &HashMap<G::Node, G::Weight>,
+                     w: &F,
+                     p: &HashMap<G::Node, (G::Node, G::Weight)>| {
+            debug_assert!(crate::is_negative_cycle(p, vtx, d, w));
+        };
         crate::howard_search(self.graph, dist, get_weight, &mut self.pred, relax, check)
     }
 }

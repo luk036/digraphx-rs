@@ -826,6 +826,40 @@ where
     false
 }
 
+/// Check whether the cycle starting at `handle` in a successor policy map is
+/// negative.
+///
+/// The successor policy keeps $d_u \ge d_v - w(u,v)$ for `point_to[u] == (v, w)`,
+/// so a negative cycle violates the inequality in the opposite direction:
+///
+/// $$ d_u < d_v - w(u,v) $$
+pub(crate) fn is_negative_cycle_succ<Node, Weight, F>(
+    point_to: &HashMap<Node, (Node, Weight)>,
+    handle: Node,
+    dist: &HashMap<Node, Weight>,
+    get_weight: &F,
+) -> bool
+where
+    Node: Copy + Eq + Hash,
+    Weight: Sub<Output = Weight> + PartialOrd + Copy + Zero,
+    F: Fn(&Weight) -> Weight,
+{
+    let mut vtx = handle;
+    loop {
+        let &(utx, w) = point_to.get(&vtx).unwrap();
+        let dv = *dist.get(&vtx).unwrap_or(&Weight::zero());
+        let du = *dist.get(&utx).unwrap_or(&Weight::zero());
+        if dv < du - get_weight(&w) {
+            return true;
+        }
+        vtx = utx;
+        if vtx == handle {
+            break;
+        }
+    }
+    false
+}
+
 /// Template Method: Howard's policy-iteration skeleton.
 ///
 /// Repeatedly relaxes to a fixpoint, finds cycles in the point-to map, and

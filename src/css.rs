@@ -171,30 +171,7 @@ where
 {
     let api = CssApi;
     let mut ncf = NegCycleFinder::new(gra);
-    let mut ratio = *r0;
-    let mut ratio_best = *r0;
-    let mut cycle_best = Vec::new();
-    let mut cycle_opt = Vec::new();
-
-    loop {
-        let current = ratio;
-        let get_weight = |w: &CssWeight| api.distance(&current, w);
-        for ci in ncf.howard(dist, get_weight) {
-            let ri = api.zero_cancel(&ci);
-            if ratio_best > ri {
-                ratio_best = ri;
-                cycle_best = ci;
-            }
-        }
-        if ratio_best >= ratio {
-            break;
-        }
-        cycle_opt = std::mem::take(&mut cycle_best);
-        ratio = ratio_best;
-    }
-
-    *r0 = ratio;
-    cycle_opt
+    crate::parametric::parametric_search(&mut ncf, &api, dist, r0, |_| {})
 }
 
 /// Minimum feasible clock period (the *maximum* cycle ratio).
